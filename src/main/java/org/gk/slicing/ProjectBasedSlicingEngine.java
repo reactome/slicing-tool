@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.log4j.Logger;
 import org.gk.model.GKInstance;
 import org.gk.model.InstanceUtilities;
 import org.gk.model.ReactomeJavaConstants;
@@ -22,6 +21,8 @@ import org.gk.schema.GKSchemaAttribute;
 import org.gk.schema.GKSchemaClass;
 import org.gk.schema.SchemaClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class is used to do a project-based slicing enginge. This class is based on
@@ -45,7 +46,7 @@ import org.junit.Test;
  */
 @SuppressWarnings("unchecked")
 public class ProjectBasedSlicingEngine extends SlicingEngine {
-    private static Logger logger = Logger.getLogger(ProjectBasedSlicingEngine.class);
+    private static Logger logger = LoggerFactory.getLogger(ProjectBasedSlicingEngine.class);
     
     private String project = null;
     private boolean useForSpecies = false;

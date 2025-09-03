@@ -37,7 +37,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.gk.database.DefaultInstanceEditHelper;
 import org.gk.model.GKInstance;
@@ -54,6 +53,8 @@ import org.gk.schema.Schema;
 import org.gk.schema.SchemaClass;
 import org.gk.slicing.updateTracker.UpdateTrackerHandler;
 import org.gk.util.GKApplicationUtilities;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 
@@ -77,7 +78,7 @@ import org.gk.util.GKApplicationUtilities;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class SlicingEngine {
     // For logging
-    private static final Logger logger = Logger.getLogger(SlicingEngine.class);
+    private static final Logger logger = LoggerFactory.getLogger(SlicingEngine.class);
     // Constants
     private final String DUMP_FILE_NAME = "slicingDump.sql";
     private final String SCHEMA_FILE_NAME = "slicingSchema.sql";

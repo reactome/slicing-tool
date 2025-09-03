@@ -1,9 +1,13 @@
 package org.reactome.slicingtool.test;
 
+import java.util.List;
+import java.util.Map;
+
 import org.gk.model.GKInstance;
 import org.gk.persistence.MySQLAdaptor;
 import org.gk.schema.SchemaAttribute;
 import org.gk.slicing.GraphDBInstanceManager;
+import org.gk.slicing.GraphDBSliceToRelTool;
 import org.gk.slicing.GraphToRelInstanceConvertManager;
 import org.junit.Test;
 import org.reactome.curation.model.SimpleInstance;
@@ -19,6 +23,25 @@ public class GraphDBSlicingTests {
                                             "root", 
                                             "macmysql01");
         return dba;
+    }
+    
+    
+    @Test
+    public void testGraphDBSlicingTool() throws Exception {
+        GraphDBSliceToRelTool slicingTool = new GraphDBSliceToRelTool();
+        slicingTool.setTargetDBA(getDBA());
+        // Used for testing
+        List<Long> topLevelIDs = List.of(9612973L, 9909396L); // Autophay and Circadian clock
+        slicingTool.setTopLevelIDs(topLevelIDs);
+        Map<Long, GKInstance> events = slicingTool.extractEvents();
+        for (Long dbId : events.keySet()) {
+            GKInstance event = events.get(dbId);
+            System.out.println("Event: " + event);
+            for (Object obj : event.getSchemClass().getAttributes()) {
+                SchemaAttribute attr = (SchemaAttribute) obj;
+                System.out.println("  " + attr.getName() + ": " + event.getAttributeValue(attr.getName()));
+            }
+        }
     }
     
     @Test

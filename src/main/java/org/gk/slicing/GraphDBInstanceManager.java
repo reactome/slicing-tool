@@ -10,11 +10,6 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
-import org.gk.model.GKInstance;
-import org.gk.model.ReactomeJavaConstants;
-import org.gk.persistence.MySQLAdaptor;
-import org.gk.schema.SchemaAttribute;
-import org.gk.schema.SchemaClass;
 import org.reactome.curation.model.SimpleInstance;
 import org.reactome.curation.user.model.User;
 

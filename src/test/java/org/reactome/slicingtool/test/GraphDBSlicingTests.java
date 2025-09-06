@@ -11,8 +11,11 @@ import org.gk.slicing.GraphDBSliceToRelTool;
 import org.gk.slicing.GraphToRelInstanceConvertManager;
 import org.junit.Test;
 import org.reactome.curation.model.SimpleInstance;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class GraphDBSlicingTests {
+    private static final Logger logger = LoggerFactory.getLogger(GraphDBSlicingTests.class);
     
     private GraphDBInstanceManager graphDbInstaneManager = GraphDBInstanceManager.getInstance();
     private GraphToRelInstanceConvertManager conversionManager = GraphToRelInstanceConvertManager.getInstance();
@@ -28,6 +31,8 @@ public class GraphDBSlicingTests {
     
     @Test
     public void testGraphDBSlicingTool() throws Exception {
+        logger.info("Testing GraphDBSliceToRelTool...");
+        long start = System.currentTimeMillis();
         GraphDBSliceToRelTool slicingTool = new GraphDBSliceToRelTool();
         slicingTool.setTargetDBA(getDBA());
         // Used for testing
@@ -37,16 +42,20 @@ public class GraphDBSlicingTests {
         Map<Long, GKInstance> events = slicingTool.getExtractedInstances();
         for (Long dbId : events.keySet()) {
             GKInstance event = events.get(dbId);
-            System.out.println("Event: " + event);
+            logger.info("Event: " + event);
             for (Object obj : event.getSchemClass().getAttributes()) {
                 SchemaAttribute attr = (SchemaAttribute) obj;
                 List<?> values = event.getAttributeValuesList(attr.getName());
                 if (values == null || values.size() == 0)
                     continue;
                 List<String> strValues = values.stream().map(v -> v.toString()).collect(java.util.stream.Collectors.toList());
-                System.out.println("  " + attr.getName() + ": " + String.join("; ", strValues));
+                logger.info("  " + attr.getName() + ": " + String.join("; ", strValues));
             }
+            break; // Just print one
         }
+        logger.info("Total extracted instances: " + events.size());
+        long end = System.currentTimeMillis();
+        logger.info("Total time: " + (end - start)/1000 + " seconds.");
     }
     
     @Test

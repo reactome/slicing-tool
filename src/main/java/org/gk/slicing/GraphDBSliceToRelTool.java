@@ -1,5 +1,9 @@
 package org.gk.slicing;
 
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,16 +41,44 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         return id2InstanceMap;
     }
     
+    private List<Long> getTopLevelIDs() throws Exception {
+        if (topLevelIDs != null)
+            return topLevelIDs;
+        topLevelIDs = new ArrayList<>();
+        InputStream is = getClass().getClassLoader().getResourceAsStream(processFileName);
+        if (is == null) {
+            throw new IllegalArgumentException("Resource not found: " + processFileName);
+        }
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(is))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("#") || line.trim().isEmpty())
+                    continue;
+                String[] tokens = line.split("\t");
+                topLevelIDs.add(Long.parseLong(tokens[0].trim()));
+            }
+        }
+        return topLevelIDs;
+    }
+    
     @Override
     public void slice() throws Exception {
+        if (!prepareTargetDatabase())
+            throw new IllegalStateException("SlicingEngine.slice(): " +
+                    "target database cannot be set up.");
+        GraphToRelInstanceConvertManager conversionManager = GraphToRelInstanceConvertManager.getInstance();
+        conversionManager.setMySQLAdaptor(targetDBA);
+        
         GraphDBInstanceManager graphDBManager = GraphDBInstanceManager.getInstance();
-        graphDBManager.setTopLevelIDs(topLevelIDs);
+        graphDBManager.setTopLevelIDs(getTopLevelIDs());
         graphDBManager.extractInstances();
         Map<Long, SimpleInstance> extractedEvents = graphDBManager.getExtractedInstances();
         logger.info("Total extracted events: " + extractedEvents.size());
         logger.info("Converting to GKInstances...");
         
         id2InstanceMap = convertToGKInstances(extractedEvents);
+        super.sliceMap = id2InstanceMap;
+        dumpInstances();
         
 //        validateConditions();
 //        topLevelIDs = getReleasedProcesses();

@@ -1,8 +1,10 @@
 package org.gk.slicing;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -11,8 +13,11 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import org.gk.model.ReactomeJavaConstants;
 import org.reactome.curation.model.SimpleInstance;
 import org.reactome.curation.user.model.User;
+import org.reactome.server.graph.domain.model.DatabaseObject;
+import org.reactome.server.graph.domain.model.Event;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,6 +26,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /**
  * This class is responsible for managing instances of GraphDB via the curator-tool-ws RESTful API.
  */
+@SuppressWarnings("unchecked")
 public class GraphDBInstanceManager {
     private static final Logger logger = LoggerFactory.getLogger(GraphDBInstanceManager.class);
     
@@ -69,15 +75,80 @@ public class GraphDBInstanceManager {
         for (Long dbId : topLevelIDs) {
             logger.info("Processing top-level ID: " + dbId);
             // Fetch the SimpleInstance from GraphDB
-            var simpleInstance = getSimpleInstanceById(dbId);
-            if (simpleInstance == null) {
-                logger.warn("No SimpleInstance found for dbId: " + dbId);
-                continue;
-            }
+            extractHasEvent(dbId);
+            logger.info("Done: " + dbId);
         }
         logger.info("Event extraction completed.");
+        // Now extract all references for all non-event instances
+        logger.info("Starting reference extraction for non-event instances.");
+        Set<Long> eventIds = new HashSet<>(graphInstanceCache.keySet());
+        for (Long dbId : eventIds) {
+            SimpleInstance instance = graphInstanceCache.get(dbId);
+            extractReferences(instance, true);
+        }
+        logger.info("Reference extraction completed.");
     }
-
+    
+    /**
+     * Extract the event branch starting from the given top-level event.
+     * Note: hasMember is not used in the data model any more.
+     * @param dbId for the Event object.
+     */
+    private void extractHasEvent(Long dbId) {
+        if (graphInstanceCache.containsKey(dbId))
+            return; // Already processed
+        SimpleInstance event = getSimpleInstanceById(dbId);
+        if (event == null)
+            return;
+        List<SimpleInstance> hasEventList = (List<SimpleInstance>) event.getAttributes().get(ReactomeJavaConstants.hasEvent);
+        if (hasEventList == null || hasEventList.size() == 0)
+            return;
+        for (SimpleInstance subEvent : hasEventList) 
+            extractHasEvent(subEvent.getDbId());
+    }
+    
+    private void extractReferences(SimpleInstance instance, boolean forEvent) {
+        if (instance == null)
+            return; // This should never happen
+        if (!forEvent) { // Only extract references for non-event instances
+            if (graphInstanceCache.containsKey(instance.getDbId())) // Nothing to do
+                return; // Already processed
+            // All events should be extracted previously so that they are completely contained
+            // in the hierarchy and cache
+            if (isEvent(instance))
+                return;
+        }
+        graphInstanceCache.put(instance.getDbId(), instance);
+        if (instance.getAttributes() == null || instance.getAttributes().size() == 0)
+            return; // Nothing more to do
+        for (String attName : instance.getAttributes().keySet()) {
+            Object attValue = instance.getAttributes().get(attName);
+            if (attValue == null)
+                continue;
+            if (attValue instanceof SimpleInstance) {
+                extractReferences((SimpleInstance) attValue, false);
+                continue;
+            }
+            if (attValue instanceof List) {
+                List<Object> attValues = (List<Object>) attValue;
+                if (attValues.size() == 0)
+                    continue;
+                // Peek at the first element to see if it is a reference
+                if (!(attValues.get(0) instanceof SimpleInstance))
+                    continue; // Not a list of references
+                for (Object obj : attValues) {
+                    extractReferences((SimpleInstance) obj, false);
+                }
+            }
+        }
+    }
+    
+    private boolean isEvent(SimpleInstance instance) {
+        Class<? extends DatabaseObject> cls = instance.getGraphModelClass();
+        if (cls == null)
+            return false;
+        return (Event.class.isAssignableFrom(cls));
+    }
     
     public SimpleInstance getSimpleInstanceById(Long dbId) {
         // Check cache first

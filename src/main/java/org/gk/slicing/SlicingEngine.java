@@ -92,7 +92,7 @@ public class SlicingEngine {
     private String targetDbUser;
     private String targetDbPwd;
     private int targetDbPort = 3306;
-    private MySQLAdaptor targetDBA;
+    protected MySQLAdaptor targetDBA;
     private MySQLAdaptor previousSliceDBA;
     // All instances should be in slicing: key DB_ID value: GKInstance
     protected Map eventMap;
@@ -948,7 +948,7 @@ public class SlicingEngine {
      * 
      * @throws Exception
      */
-    private void dumpInstances() throws Exception {
+    protected void dumpInstances() throws Exception {
         logger.info("dumpInstances()...");
         long time1 = System.currentTimeMillis();
         MySQLAdaptor targetDBA = getTargetDBA();
@@ -1271,7 +1271,7 @@ public class SlicingEngine {
         return ids;
     }
     
-    private boolean prepareTargetDatabase() throws Exception {
+    protected boolean prepareTargetDatabase() throws Exception {
         if (sourceDBA == null)
             throw new IllegalStateException("SlicingEngine.prepareTargetDatabase(): source database is not specified.");
         if (!runDumpCommand(null, DUMP_FILE_NAME))
@@ -1495,7 +1495,7 @@ public class SlicingEngine {
         // Get information from the command line
         //SlicingEngine engine = new SlicingEngine();
         // Try project based slicing engine
-        SlicingEngine engine = new ProjectBasedSlicingEngine();
+        SlicingEngine engine = new GraphDBSliceToRelTool();
         try {
             long time1 = System.currentTimeMillis();
             Properties properties = loadProperties();
@@ -1669,7 +1669,7 @@ public class SlicingEngine {
     }
     
     private static Properties loadProperties() throws IOException {
-        FileInputStream fis = new FileInputStream("slicingTool.prop");
+        InputStream fis = SlicingEngine.class.getClassLoader().getResourceAsStream("slicingTool.prop");
         Properties properties = new Properties();
         properties.load(fis);
         fis.close();

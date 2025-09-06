@@ -72,11 +72,11 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         GraphDBInstanceManager graphDBManager = GraphDBInstanceManager.getInstance();
         graphDBManager.setTopLevelIDs(getTopLevelIDs());
         graphDBManager.extractInstances();
-        Map<Long, SimpleInstance> extractedEvents = graphDBManager.getExtractedInstances();
-        logger.info("Total extracted events: " + extractedEvents.size());
+        Map<Long, SimpleInstance> extractedInsts = graphDBManager.getExtractedInstances();
+        logger.info("Total extracted instances: " + extractedInsts.size());
         logger.info("Converting to GKInstances...");
         
-        id2InstanceMap = convertToGKInstances(extractedEvents);
+        id2InstanceMap = convertToGKInstances(extractedInsts);
         super.sliceMap = id2InstanceMap;
         dumpInstances();
         
@@ -142,7 +142,8 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         GraphToRelInstanceConvertManager conversionManager = GraphToRelInstanceConvertManager.getInstance();
         for (Long dbId : simpleInstances.keySet()) {
             SimpleInstance simpleInstance = simpleInstances.get(dbId);
-            GKInstance gkInstance = conversionManager.convertGraphToRelInstance(simpleInstance);
+            GKInstance gkInstance = conversionManager.convertGraphToRelInstance(simpleInstance,
+                    simpleInstances);
             if (gkInstance != null)
                 id2InstanceMap.put(dbId, gkInstance);
         }

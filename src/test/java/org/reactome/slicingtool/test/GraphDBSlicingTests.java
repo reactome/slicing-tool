@@ -1,5 +1,6 @@
 package org.reactome.slicingtool.test;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -78,7 +79,7 @@ public class GraphDBSlicingTests {
         System.out.println("Attributes: " + instance.getAttributes().size());
         
         System.out.println("Converting to GKInstance...");
-        GKInstance gkInstance = conversionManager.convertGraphToRelInstance(instance);
+        GKInstance gkInstance = conversionManager.convertGraphToRelInstance(instance, new HashMap<>());
         System.out.println("Converted GKInstance: " + gkInstance);
         for (Object obj : gkInstance.getSchemClass().getAttributes()) {
             SchemaAttribute attr = (SchemaAttribute) obj;

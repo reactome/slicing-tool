@@ -1,6 +1,7 @@
 package org.gk.slicing;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.http.HttpResponse;
@@ -12,6 +13,8 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 import org.reactome.curation.model.SimpleInstance;
 import org.reactome.curation.user.model.User;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -19,6 +22,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * This class is responsible for managing instances of GraphDB via the curator-tool-ws RESTful API.
  */
 public class GraphDBInstanceManager {
+    private static final Logger logger = LoggerFactory.getLogger(GraphDBInstanceManager.class);
+    
     // The following URLs should be externalized in a real application
     private static final String HOST_URL = "http://localhost:9090/api/"; // Base URL for the curator-tool-ws API
     private static final String AUTH_URL = HOST_URL + "authenticate"; // Endpoint to fetch JWT token
@@ -29,6 +34,8 @@ public class GraphDBInstanceManager {
     private Map<Long, SimpleInstance> graphInstanceCache;
     private ObjectMapper objectMapper;
     private String jwtToken;
+    // Used to specify top-level instances for slicing
+    private List<Long> topLevelIDs;
 
     private GraphDBInstanceManager() {
         this.jwtToken = this.fetchJwtToken("test", "password");
@@ -42,6 +49,35 @@ public class GraphDBInstanceManager {
         }
         return instance;
     }
+    
+    public void setTopLevelIDs(List<Long> topLevelIDs) {
+        this.topLevelIDs = topLevelIDs;
+    }
+    
+    /**
+     * Call this method to get all extracted instances after calling extractInstances().
+     * @return
+     */
+    public Map<Long, SimpleInstance> getExtractedInstances() {
+        return graphInstanceCache;
+    }
+    
+    public void extractInstances() {
+        if (topLevelIDs == null || topLevelIDs.size() == 0)
+            throw new IllegalStateException("Top-level IDs have not been set.");
+        logger.info("Starting event extraction using GraphDBSlicingTool.");
+        for (Long dbId : topLevelIDs) {
+            logger.info("Processing top-level ID: " + dbId);
+            // Fetch the SimpleInstance from GraphDB
+            var simpleInstance = getSimpleInstanceById(dbId);
+            if (simpleInstance == null) {
+                logger.warn("No SimpleInstance found for dbId: " + dbId);
+                continue;
+            }
+        }
+        logger.info("Event extraction completed.");
+    }
+
     
     public SimpleInstance getSimpleInstanceById(Long dbId) {
         // Check cache first

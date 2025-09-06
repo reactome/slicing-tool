@@ -33,13 +33,18 @@ public class GraphDBSlicingTests {
         // Used for testing
         List<Long> topLevelIDs = List.of(9612973L, 9909396L); // Autophay and Circadian clock
         slicingTool.setTopLevelIDs(topLevelIDs);
-        Map<Long, GKInstance> events = slicingTool.extractEvents();
+        slicingTool.slice();
+        Map<Long, GKInstance> events = slicingTool.getExtractedInstances();
         for (Long dbId : events.keySet()) {
             GKInstance event = events.get(dbId);
             System.out.println("Event: " + event);
             for (Object obj : event.getSchemClass().getAttributes()) {
                 SchemaAttribute attr = (SchemaAttribute) obj;
-                System.out.println("  " + attr.getName() + ": " + event.getAttributeValue(attr.getName()));
+                List<?> values = event.getAttributeValuesList(attr.getName());
+                if (values == null || values.size() == 0)
+                    continue;
+                List<String> strValues = values.stream().map(v -> v.toString()).collect(java.util.stream.Collectors.toList());
+                System.out.println("  " + attr.getName() + ": " + String.join("; ", strValues));
             }
         }
     }

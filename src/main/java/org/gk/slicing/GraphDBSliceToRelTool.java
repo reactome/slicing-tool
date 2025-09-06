@@ -1,10 +1,12 @@
 package org.gk.slicing;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.gk.model.GKInstance;
 import org.gk.persistence.MySQLAdaptor;
+import org.reactome.curation.model.SimpleInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,6 +17,8 @@ import org.slf4j.LoggerFactory;
  */
 public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
     private static final Logger logger = LoggerFactory.getLogger(GraphDBSliceToRelTool.class);
+    // Temporary storage for top-level IDs to be sliced for debugging and testing
+    private Map<Long, GKInstance> id2InstanceMap;
     
     public GraphDBSliceToRelTool() {
     }
@@ -29,23 +33,88 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         this.topLevelIDs = topLevelIDs;
     }
     
+    public Map<Long, GKInstance> getExtractedInstances() {
+        return id2InstanceMap;
+    }
+    
     @Override
-    public Map<Long, GKInstance> extractEvents() throws Exception {
-        logger.info("Starting event extraction using GraphDBSlicingTool.");
-        // Initialize the GraphDBInstanceManager
+    public void slice() throws Exception {
         GraphDBInstanceManager graphDBManager = GraphDBInstanceManager.getInstance();
-        Map<Long, GKInstance> extractedEvents = new java.util.HashMap<>();
-        for (Long dbId : topLevelIDs) {
-            logger.info("Processing top-level ID: " + dbId);
-            // Fetch the SimpleInstance from GraphDB
-            var simpleInstance = graphDBManager.getSimpleInstanceById(dbId);
-            if (simpleInstance == null) {
-                logger.warn("No SimpleInstance found for dbId: " + dbId);
-                continue;
-            }
+        graphDBManager.setTopLevelIDs(topLevelIDs);
+        graphDBManager.extractInstances();
+        Map<Long, SimpleInstance> extractedEvents = graphDBManager.getExtractedInstances();
+        logger.info("Total extracted events: " + extractedEvents.size());
+        logger.info("Converting to GKInstances...");
+        
+        id2InstanceMap = convertToGKInstances(extractedEvents);
+        
+//        validateConditions();
+//        topLevelIDs = getReleasedProcesses();
+//        speciesIDs = getSpeciesIDs();
+//        if(!prepareTargetDatabase())
+//            throw new IllegalStateException("SlicingEngine.slice(): " +
+//                    "target database cannot be set up.");
+//        eventMap = extractEvents();
+//        extractReferences();
+//        extractRegulations();
+        // As of November, 2018, this class has been deleted
+//        extractConcurrentEventSets();
+        // This is not needed any more
+//        extractReactionCoordinates();
+//        extractSpecies();
+//        extractPathwayDiagrams();
+//        extractUpdateTrackerInstances();
+//        extractReviewStatus();
+//        PrintStream output = null;
+//        if (logFileName != null)
+//            output = new PrintStream(new FileOutputStream(logFileName));
+//        else
+//            output = System.err;
+//        SlicingQualityAssay qa = new SlicingQualityAssay();
+//        qa.setSliceMap(this.sliceMap);
+//        qa.setSourceDBA(sourceDBA);
+//        qa.validateExistence(output);
+//        qa.validateEventsInHierarchy(topLevelIDs,
+//                                     output);
+//        qa.validateAttributes(output);
+//        qa.validateStableIds(output); // Added a new check for StableIds on August 1, 2016
+//        // Better call this method as the last QA to make sure the attributes have been checked.
+//        qa.validateUpdateTrackers(output);
+//        if (logFileName != null)
+//            output.close(); // Close it if output is opened by the application
+//        addReleaseStatus();
+//        logger.info("Filling Attribute Values...");
+//        // Need to fill values for Complex.includedLocation
+//        fillIncludedLocationForComplex();
+//        fillAttributeValuesForEntitySets();
+//        List<GKInstance> eventsWithReviewStatusUpdated = fillReviewStatus();
+//        // There is no need to get anything here
+//        copyReviewStatus();
+//        cleanUpPathwayFigures();
+//        // Add this step to remove NegativePrecedingEvent instances that don't have negativePrecedingEvent value
+//        // These NegativePrecedingEvent instances will also be removed from their referrers.
+//        cleanUpNegativePrecedingEvents();
+//        // This step has to be called just before dumpInstances() since the replacementInstance
+//        // slot in _Deleted will be checked against the sliceMap.
+//        handleDeletions();
+//        dumpInstances();
+//        addFrontPage();
+//        addReleaseNumber();
+//        setStableIdReleased();
+//        handleRevisions();
+//        updateReviewStatusToSource(eventsWithReviewStatusUpdated);
+    }
+    
+    private Map<Long, GKInstance> convertToGKInstances(Map<Long, SimpleInstance> simpleInstances) throws Exception {
+        Map<Long, GKInstance> id2InstanceMap = new HashMap<>();
+        GraphToRelInstanceConvertManager conversionManager = GraphToRelInstanceConvertManager.getInstance();
+        for (Long dbId : simpleInstances.keySet()) {
+            SimpleInstance simpleInstance = simpleInstances.get(dbId);
+            GKInstance gkInstance = conversionManager.convertGraphToRelInstance(simpleInstance);
+            if (gkInstance != null)
+                id2InstanceMap.put(dbId, gkInstance);
         }
-        logger.info("Event extraction completed.");
-        return extractedEvents;
+        return id2InstanceMap;
     }
     
 

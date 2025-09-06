@@ -37,6 +37,27 @@ public class GraphToRelInstanceConvertManager {
         this.dba = dba;
     }
     
+    private String getSchemaClassName(SimpleInstance simpleInstance) {
+        String clsName = simpleInstance.getSchemaClassName();
+        if (clsName.equals("TopLevelPathway"))
+            clsName = ReactomeJavaConstants.Pathway;
+        else if (clsName.equals("ReactionLikeEvent"))
+            clsName = ReactomeJavaConstants.ReactionlikeEvent;
+        return clsName;
+    }
+    
+    private String getAtttributeName(String attName) {
+        if (attName.equals("displayName"))
+            return ReactomeJavaConstants._displayName;
+        else if (attName.equals("dbId"))
+            return ReactomeJavaConstants.DB_ID;
+        else if (attName.equals("modifiedList"))
+            return ReactomeJavaConstants.modified;
+        else if (attName.equals("doRelease"))
+            return ReactomeJavaConstants._doRelease;
+        return attName;
+    }
+    
    
     /**
      * Convert a SimpleInstance to a GKInstance. 
@@ -47,7 +68,7 @@ public class GraphToRelInstanceConvertManager {
         GKInstance gkInst = gkInstanceCache.get(simpleInstance.getDbId());
         if (gkInst != null)
             return gkInst;
-        SchemaClass gkSchemaClass = dba.getSchema().getClassByName(simpleInstance.getSchemaClassName());
+        SchemaClass gkSchemaClass = dba.getSchema().getClassByName(getSchemaClassName(simpleInstance));
         // Create a new copy of GKInstance
         gkInst = new GKInstance();
         gkInst.setDBID(simpleInstance.getDbId());
@@ -62,15 +83,12 @@ public class GraphToRelInstanceConvertManager {
                 Object attrValue = entry.getValue();
                 if (attrValue == null || attrName.equals("stId") || attrName.equals("modified"))
                     continue;
-                if (attrName.equals("displayName"))
-                    attrName = ReactomeJavaConstants._displayName; 
-                else if (attrName.equals("dbId")) {
-                    attrName = ReactomeJavaConstants.DB_ID;
+                // Need some conversion from the graph attribute name to the relational attribute name
+                attrName = getAtttributeName(attrName);
+                if (attrName.equals(ReactomeJavaConstants.DB_ID)) {
                     // Convert from Integer to Long
                     attrValue = Long.valueOf(attrValue.toString());
                 }
-                else if (attrName.equals("modifiedList"))
-                    attrName = ReactomeJavaConstants.modified;
                 // The following will throw exception if the attribute is not defined in the schema
                 SchemaAttribute schemaAttr = gkSchemaClass.getAttribute(attrName);
                 if (schemaAttr.isInstanceTypeAttribute()) {

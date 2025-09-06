@@ -1,6 +1,7 @@
 package org.gk.slicing;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.gk.model.GKInstance;
@@ -46,7 +47,7 @@ public class GraphToRelInstanceConvertManager {
         return clsName;
     }
     
-    private String getAtttributeName(String attName) {
+    private String getAtttributeName(String attName, String schemaClassName) {
         if (attName.equals("displayName"))
             return ReactomeJavaConstants._displayName;
         else if (attName.equals("dbId"))
@@ -55,6 +56,10 @@ public class GraphToRelInstanceConvertManager {
             return ReactomeJavaConstants.modified;
         else if (attName.equals("doRelease"))
             return ReactomeJavaConstants._doRelease;
+        else if ((schemaClassName.equals(ReactomeJavaConstants.Compartment) || 
+                 schemaClassName.startsWith("GO_")) 
+                && attName.equals(ReactomeJavaConstants.identifier))
+            return ReactomeJavaConstants.accession;
         return attName;
     }
     
@@ -64,10 +69,15 @@ public class GraphToRelInstanceConvertManager {
      * @param simpleInstance The SimpleInstance to convert.
      * @return A new GKInstance mapped to the given SimpleInstance.
      */
-    public GKInstance convertGraphToRelInstance(SimpleInstance simpleInstance) throws Exception {
+    public GKInstance convertGraphToRelInstance(SimpleInstance simpleInstance,
+                                                Map<Long, SimpleInstance> id2graphInst) throws Exception {
         GKInstance gkInst = gkInstanceCache.get(simpleInstance.getDbId());
         if (gkInst != null)
             return gkInst;
+        // We need to use the filled instance from the map to ensure all attributes are available
+        SimpleInstance filledInstance = id2graphInst.get(simpleInstance.getDbId());
+        if (filledInstance != null)
+            simpleInstance = filledInstance; // Otherwise, use the given instance
         SchemaClass gkSchemaClass = dba.getSchema().getClassByName(getSchemaClassName(simpleInstance));
         // Create a new copy of GKInstance
         gkInst = new GKInstance();
@@ -84,7 +94,7 @@ public class GraphToRelInstanceConvertManager {
                 if (attrValue == null || attrName.equals("stId") || attrName.equals("modified"))
                     continue;
                 // Need some conversion from the graph attribute name to the relational attribute name
-                attrName = getAtttributeName(attrName);
+                attrName = getAtttributeName(attrName, gkSchemaClass.getName());
                 if (attrName.equals(ReactomeJavaConstants.DB_ID)) {
                     // Convert from Integer to Long
                     attrValue = Long.valueOf(attrValue.toString());
@@ -95,21 +105,36 @@ public class GraphToRelInstanceConvertManager {
                     if (attrValue instanceof SimpleInstance) {
                         // Recursively convert to GKInstance
                         SimpleInstance refInst = (SimpleInstance) attrValue;
-                        GKInstance refGkInst = convertGraphToRelInstance(refInst);
+                        GKInstance refGkInst = convertGraphToRelInstance(refInst, id2graphInst);
                         gkInst.setAttributeValue(attrName, refGkInst);
                     }
                     else if (attrValue instanceof java.util.List) {
                         @SuppressWarnings("unchecked")
                         java.util.List<SimpleInstance> refValues = (java.util.List<SimpleInstance>) attrValue;
                         for (SimpleInstance refInst : refValues) {
-                            GKInstance refGkInst = convertGraphToRelInstance(refInst);
+                            GKInstance refGkInst = convertGraphToRelInstance(refInst, id2graphInst);
                             gkInst.addAttributeValue(attrName, refGkInst);
                         }
                     }
                 }
                 else {
                     // Just copy the value
-                    gkInst.setAttributeValue(attrName, attrValue);
+                    System.out.println("Setting attribute: " + attrName + " with value for cls: " + attrValue + " " + gkInst);
+                    // There is some inconsistency within ExternalOntologyTerm instances
+                    if ((gkInst.getSchemClass().getName().equals(ReactomeJavaConstants.PsiMod) ||
+                        gkInst.getSchemClass().getName().equals(ReactomeJavaConstants.SequenceOntology)) &&
+                        (attrName.equals(ReactomeJavaConstants.name))) {
+                        if (attrValue instanceof java.util.List) {
+                            @SuppressWarnings("unchecked")
+                            List<String> values = (List<String>) attrValue;
+                            if (values.size() > 0)
+                                gkInst.setAttributeValue(attrName, values.get(0));
+                        }
+                        else if (attrValue instanceof String)
+                            gkInst.setAttributeValue(attrName, attrValue);
+                    }
+                    else
+                        gkInst.setAttributeValue(attrName, attrValue);
                 }
             }
         }

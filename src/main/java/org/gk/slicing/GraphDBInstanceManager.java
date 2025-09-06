@@ -42,11 +42,14 @@ public class GraphDBInstanceManager {
     private String jwtToken;
     // Used to specify top-level instances for slicing
     private List<Long> topLevelIDs;
+    // Tracked references pulling
+    private Set<Long> refsProcessedIds;
 
     private GraphDBInstanceManager() {
         this.jwtToken = this.fetchJwtToken("test", "password");
         this.objectMapper = new ObjectMapper();
         this.graphInstanceCache = new HashMap<>();
+        refsProcessedIds = new HashSet<>();
     }
 
     public static GraphDBInstanceManager getInstance() {
@@ -78,13 +81,18 @@ public class GraphDBInstanceManager {
             extractHasEvent(dbId);
             logger.info("Done: " + dbId);
         }
-        logger.info("Event extraction completed.");
+        logger.info("Event extraction completed: " + graphInstanceCache.size() + " events extracted.");
+        // Remove non-released events from the cache
+        logger.info("Removing non-released events from the cache.");
+        removeNotReleasedEvents();
+        logger.info("Non-released events removed. Remaining events: " + graphInstanceCache.size());
         // Now extract all references for all non-event instances
-        logger.info("Starting reference extraction for non-event instances.");
+        logger.info("Starting reference extraction...");
         Set<Long> eventIds = new HashSet<>(graphInstanceCache.keySet());
         for (Long dbId : eventIds) {
+            logger.info("Processing event ID for references: " + dbId);
             SimpleInstance instance = graphInstanceCache.get(dbId);
-            extractReferences(instance, true);
+            extractReferences(instance);
         }
         logger.info("Reference extraction completed.");
     }
@@ -100,33 +108,59 @@ public class GraphDBInstanceManager {
         SimpleInstance event = getSimpleInstanceById(dbId);
         if (event == null)
             return;
+        if (!isReleased(event))
+            return; // Skip non-released events
         List<SimpleInstance> hasEventList = (List<SimpleInstance>) event.getAttributes().get(ReactomeJavaConstants.hasEvent);
         if (hasEventList == null || hasEventList.size() == 0)
             return;
-        for (SimpleInstance subEvent : hasEventList) 
+        for (SimpleInstance subEvent : hasEventList) {
             extractHasEvent(subEvent.getDbId());
+        }
     }
     
-    private void extractReferences(SimpleInstance instance, boolean forEvent) {
-        if (instance == null)
-            return; // This should never happen
-        if (!forEvent) { // Only extract references for non-event instances
-            if (graphInstanceCache.containsKey(instance.getDbId())) // Nothing to do
-                return; // Already processed
-            // All events should be extracted previously so that they are completely contained
-            // in the hierarchy and cache
-            if (isEvent(instance))
-                return;
+    private void removeNotReleasedEvents() {
+        Set<Long> toBeRemoved = new HashSet<>();
+        for (Long dbId : graphInstanceCache.keySet()) {
+            SimpleInstance instance = graphInstanceCache.get(dbId);
+            // At this stage, only events should be in the cache
+            if (!isReleased(instance)) {
+                toBeRemoved.add(dbId);
+            }
         }
-        graphInstanceCache.put(instance.getDbId(), instance);
+        graphInstanceCache.keySet().removeAll(toBeRemoved);
+        // Clean up hasEvent references
+        for (Long dbId : graphInstanceCache.keySet()) {
+            SimpleInstance instance = graphInstanceCache.get(dbId);
+            List<SimpleInstance> hasEventList = (List<SimpleInstance>) instance.getAttributes().get(ReactomeJavaConstants.hasEvent);
+            if (hasEventList == null || hasEventList.size() == 0)
+                continue;
+            hasEventList.removeIf(e -> toBeRemoved.contains(e.getDbId()));
+        }
+    }
+    
+    private boolean isReleased(SimpleInstance instance) {
+        Boolean doRelease = (Boolean) instance.getAttributes().get("doRelease");
+        return (doRelease != null && doRelease);
+    }
+    
+    private void extractNonEventReferences(SimpleInstance instance) {
+        if (isEvent(instance) || refsProcessedIds.contains(instance.getDbId()))
+            return; // Only process non-event instances
+        // Need to get all attributes
+        instance = getSimpleInstanceById(instance.getDbId());
+        extractReferences(instance);
+    }
+
+    private void extractReferences(SimpleInstance instance) {
         if (instance.getAttributes() == null || instance.getAttributes().size() == 0)
             return; // Nothing more to do
+        refsProcessedIds.add(instance.getDbId());
         for (String attName : instance.getAttributes().keySet()) {
             Object attValue = instance.getAttributes().get(attName);
             if (attValue == null)
                 continue;
             if (attValue instanceof SimpleInstance) {
-                extractReferences((SimpleInstance) attValue, false);
+                extractNonEventReferences((SimpleInstance) attValue);
                 continue;
             }
             if (attValue instanceof List) {
@@ -137,7 +171,7 @@ public class GraphDBInstanceManager {
                 if (!(attValues.get(0) instanceof SimpleInstance))
                     continue; // Not a list of references
                 for (Object obj : attValues) {
-                    extractReferences((SimpleInstance) obj, false);
+                    extractNonEventReferences((SimpleInstance) obj);
                 }
             }
         }

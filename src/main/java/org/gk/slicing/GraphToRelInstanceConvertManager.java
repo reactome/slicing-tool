@@ -119,7 +119,6 @@ public class GraphToRelInstanceConvertManager {
                 }
                 else {
                     // Just copy the value
-                    System.out.println("Setting attribute: " + attrName + " with value for cls: " + attrValue + " " + gkInst);
                     // There is some inconsistency within ExternalOntologyTerm instances
                     if ((gkInst.getSchemClass().getName().equals(ReactomeJavaConstants.PsiMod) ||
                         gkInst.getSchemClass().getName().equals(ReactomeJavaConstants.SequenceOntology)) &&

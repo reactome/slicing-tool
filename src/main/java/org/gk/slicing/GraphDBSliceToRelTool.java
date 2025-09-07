@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 
 import org.gk.model.GKInstance;
+import org.gk.model.InstanceDisplayNameGenerator;
+import org.gk.model.ReactomeJavaConstants;
 import org.gk.persistence.MySQLAdaptor;
 import org.reactome.curation.model.SimpleInstance;
 import org.slf4j.Logger;
@@ -77,6 +79,8 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         logger.info("Converting to GKInstances...");
         
         id2InstanceMap = convertToGKInstances(extractedInsts);
+        resetEmptyDatetimeInInstanceEdits(id2InstanceMap);
+        
         super.sliceMap = id2InstanceMap;
         dumpInstances();
         
@@ -148,6 +152,28 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
                 id2InstanceMap.put(dbId, gkInstance);
         }
         return id2InstanceMap;
+    }
+    
+    /**
+     * The value '0000-00-00 00:00:00' is not a valid DATETIME under modern MySQL settings.
+     * Since MySQL 5.7 (and in MySQL 8.x), strict mode is enabled by default, which forbids “zero” dates.
+     * When your Java code tries to insert/update such a value, MySQL rejects it and JDBC raises a 
+     * MysqlDataTruncation. This method is used to reset such values to 2000-01-01 00:00:01.
+     */
+    private void resetEmptyDatetimeInInstanceEdits(Map<Long, GKInstance> id2InstanceMap) throws Exception {
+        logger.info("Resetting empty dateTime values in InstanceEdit instances...");
+        for (Long dbId : id2InstanceMap.keySet()) {
+            GKInstance instance = id2InstanceMap.get(dbId);
+            if (!instance.getSchemClass().getName().equals(ReactomeJavaConstants.InstanceEdit))
+                continue; // Skip InstanceEdit instances
+            String dateTime = (String) instance.getAttributeValue(ReactomeJavaConstants.dateTime);
+            if (dateTime != null && dateTime.equals("0000-00-00 00:00:00")) {
+                instance.setAttributeValue(ReactomeJavaConstants.dateTime, "2000-01-01 00:00:01");
+                // Need to update displayName as well
+                InstanceDisplayNameGenerator.setDisplayName(instance);
+            }
+        }
+        logger.info("Finished resetting empty dateTime values in InstanceEdit instances.");
     }
     
 

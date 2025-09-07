@@ -97,6 +97,7 @@ public class GraphDBInstanceManager {
         logger.info("Reference extraction completed.");
     }
     
+    
     /**
      * Extract the event branch starting from the given top-level event.
      * Note: hasMember is not used in the data model any more.

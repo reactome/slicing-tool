@@ -89,10 +89,15 @@ public class GraphDBInstanceManager {
         // Now extract all references for all non-event instances
         logger.info("Starting reference extraction...");
         Set<Long> eventIds = new HashSet<>(graphInstanceCache.keySet());
+        int processedCount = 0;
         for (Long dbId : eventIds) {
-            logger.info("Processing event ID for references: " + dbId);
+//            logger.info("Processing event ID for references: " + dbId);
             SimpleInstance instance = graphInstanceCache.get(dbId);
             extractReferences(instance);
+            processedCount++;
+            if (processedCount % 100 == 0) {
+                logger.info("Processed " + processedCount + " events for references.");
+            }
         }
         logger.info("Reference extraction completed.");
     }

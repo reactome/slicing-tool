@@ -56,7 +56,7 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
             while ((line = reader.readLine()) != null) {
                 if (line.startsWith("#") || line.trim().isEmpty())
                     continue;
-                String[] tokens = line.split("\t");
+                String[] tokens = line.split(" |\t");
                 topLevelIDs.add(Long.parseLong(tokens[0].trim()));
             }
         }

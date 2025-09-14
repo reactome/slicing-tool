@@ -44,6 +44,8 @@ public class GraphToRelInstanceConvertManager {
             clsName = ReactomeJavaConstants.Pathway;
         else if (clsName.equals("ReactionLikeEvent"))
             clsName = ReactomeJavaConstants.ReactionlikeEvent;
+        else if (clsName.equals("UpdateTracker"))
+            clsName = ReactomeJavaConstants._UpdateTracker;
         return clsName;
     }
     

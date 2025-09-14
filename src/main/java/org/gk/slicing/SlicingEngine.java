@@ -110,8 +110,8 @@ public class SlicingEngine {
     // This is used to set releaseStatus
     protected String lastReleaseDate;
     // These two variables are for species
-    private List speciesIDs;
-    private String speciesFileName;
+    protected List<Long> speciesIDs;
+    protected String speciesFileName;
     // Name for file used for logging validation results. It can be null.
     private String logFileName;
     // To control some parameters for testing
@@ -855,7 +855,7 @@ public class SlicingEngine {
      * 4). Check each Event that hasEvent as its valid attribute (aka Pathway instance) to see if this Event has not labeled
      * as "New". If any sub-pathway has been labeled as "NEW", label it as "UPDATED".
      */
-    private void addReleaseStatus() throws Exception {
+    protected void addReleaseStatus() throws Exception {
         // Check if new releaseStatus is supported
         SchemaClass eventCls = sourceDBA.getSchema().getClassByName(ReactomeJavaConstants.Event);
         if (!eventCls.isValidAttribute(ReactomeJavaConstants.releaseStatus))

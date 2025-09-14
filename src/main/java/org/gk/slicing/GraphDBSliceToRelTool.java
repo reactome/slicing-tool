@@ -1,8 +1,7 @@
 package org.gk.slicing;
 
+import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -43,24 +42,50 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         return id2InstanceMap;
     }
     
-    private List<Long> getTopLevelIDs() throws Exception {
+    /**
+     * Use this method, instead of getReleasedProcesses() in the parent class, to read top-level IDs
+     * to have a better control of what to be sliced (e.g. comment out some IDs).
+     * @return
+     * @throws Exception
+     */
+    @Override
+    protected List<Long> getReleasedProcesses() throws Exception {
         if (topLevelIDs != null)
             return topLevelIDs;
         topLevelIDs = new ArrayList<>();
+        logger.info("Reading top-level process IDs from file: " + processFileName);
         InputStream is = getClass().getClassLoader().getResourceAsStream(processFileName);
         if (is == null) {
             throw new IllegalArgumentException("Resource not found: " + processFileName);
         }
+        return readDbIds(is);
+    }
+
+    private List<Long> readDbIds(InputStream is) throws IOException {
+        List<Long> dbIds = new ArrayList<>();
         try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(is))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.startsWith("#") || line.trim().isEmpty())
                     continue;
                 String[] tokens = line.split(" |\t");
-                topLevelIDs.add(Long.parseLong(tokens[0].trim()));
+                dbIds.add(Long.parseLong(tokens[0].trim()));
             }
         }
-        return topLevelIDs;
+        logger.info("Total IDs read from file: " + dbIds.size());
+        return dbIds;
+    }
+    
+    private List<Long> readSpeciesIDs() throws Exception {
+        if (speciesIDs != null)
+            return null;
+        speciesIDs = new ArrayList<>();
+        logger.info("Reading species IDs from file: " + speciesFileName);
+        InputStream is = getClass().getClassLoader().getResourceAsStream(speciesFileName);
+        if (is == null) {
+            throw new IllegalArgumentException("Resource not found: " + speciesFileName);
+        }
+        return readDbIds(is);
     }
     
     @Override
@@ -68,11 +93,13 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         if (!prepareTargetDatabase())
             throw new IllegalStateException("SlicingEngine.slice(): " +
                     "target database cannot be set up.");
+        //TODO: Make sure to validate the requirements: e.g. processFileName, speciesFileName, etc.
         GraphToRelInstanceConvertManager conversionManager = GraphToRelInstanceConvertManager.getInstance();
         conversionManager.setMySQLAdaptor(targetDBA);
         
         GraphDBInstanceManager graphDBManager = GraphDBInstanceManager.getInstance();
-        graphDBManager.setTopLevelIDs(getTopLevelIDs());
+        graphDBManager.setTopLevelIDs(getReleasedProcesses());
+        graphDBManager.setSpeciesIds(readSpeciesIDs());
         graphDBManager.extractInstances();
         Map<Long, SimpleInstance> extractedInsts = graphDBManager.getExtractedInstances();
         logger.info("Total extracted instances: " + extractedInsts.size());
@@ -82,25 +109,17 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         resetEmptyDatetimeInInstanceEdits(id2InstanceMap);
         
         super.sliceMap = id2InstanceMap;
+        
+        // The following steps occur at the GKSchema level. Therefore, we can just
+        // call the parent class methods.
+        addReleaseStatus();
         dumpInstances();
         
 //        validateConditions();
-//        topLevelIDs = getReleasedProcesses();
-//        speciesIDs = getSpeciesIDs();
-//        if(!prepareTargetDatabase())
-//            throw new IllegalStateException("SlicingEngine.slice(): " +
-//                    "target database cannot be set up.");
-//        eventMap = extractEvents();
-//        extractReferences();
-//        extractRegulations();
-        // As of November, 2018, this class has been deleted
-//        extractConcurrentEventSets();
-        // This is not needed any more
-//        extractReactionCoordinates();
-//        extractSpecies();
+
 //        extractPathwayDiagrams();
 //        extractUpdateTrackerInstances();
-//        extractReviewStatus();
+
 //        PrintStream output = null;
 //        if (logFileName != null)
 //            output = new PrintStream(new FileOutputStream(logFileName));

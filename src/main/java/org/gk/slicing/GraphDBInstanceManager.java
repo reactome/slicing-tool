@@ -14,6 +14,7 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 import org.gk.model.ReactomeJavaConstants;
+import org.reactome.curation.model.InstanceList;
 import org.reactome.curation.model.SimpleInstance;
 import org.reactome.curation.user.model.User;
 import org.reactome.server.graph.domain.model.DatabaseObject;
@@ -34,6 +35,9 @@ public class GraphDBInstanceManager {
     private static final String HOST_URL = "http://localhost:9090/api/"; // Base URL for the curator-tool-ws API
     private static final String AUTH_URL = HOST_URL + "authenticate"; // Endpoint to fetch JWT token
     private static final String GET_INST_URL = HOST_URL + "curation/findByDbId/"; // Endpoint from testJSONDeserization
+    //@GetMapping("listInstances/{className}/{skip}/{limit}")
+    private static final String LIST_INST_URL = HOST_URL+ "curation/listInstances/"; // List instances of a class
+    private static final int PAGE_SIZE = 1000; // Number of instances to fetch per page
     
     private static GraphDBInstanceManager instance;
     // Cache all loaded SimpleInstances
@@ -42,6 +46,9 @@ public class GraphDBInstanceManager {
     private String jwtToken;
     // Used to specify top-level instances for slicing
     private List<Long> topLevelIDs;
+    // These species should be extracted even thought they are not used for
+    // orthology inference
+    private List<Long> speciesIds;
     // Tracked references pulling
     private Set<Long> refsProcessedIds;
 
@@ -63,6 +70,10 @@ public class GraphDBInstanceManager {
         this.topLevelIDs = topLevelIDs;
     }
     
+    public void setSpeciesIds(List<Long> speciesIds) {
+        this.speciesIds = speciesIds;
+    }
+    
     /**
      * Call this method to get all extracted instances after calling extractInstances().
      * @return
@@ -71,7 +82,103 @@ public class GraphDBInstanceManager {
         return graphInstanceCache;
     }
     
+    private void extractSpecies() {
+        if (speciesIds == null || speciesIds.size() == 0)
+            throw new IllegalStateException("Species IDs have not been set.");
+        logger.info("Starting species extraction using GraphDBSlicingTool.");
+        for (Long dbId : speciesIds) {
+            logger.info("Processing species ID: " + dbId);
+            // Fetch the SimpleInstance from GraphDB
+            SimpleInstance species = getSimpleInstanceById(dbId);
+            if (species == null) {
+                logger.warn("Species with dbId " + dbId + " not found.");
+                continue;
+            }
+            // We'd like to get all references for a species
+            extractReferences(species);
+            logger.info("Done: " + dbId);
+        }
+        logger.info("Species extraction completed: " + graphInstanceCache.size() + " species extracted.");
+    }
+    
     public void extractInstances() {
+        extractEvents();
+        extractSpecies();
+        extractReviewStatuses();
+        extractUpdateTracker();
+    }
+    
+    //TODO: This method may take about 3 or 4 minutes to finish. Need to optimize it!
+    private void extractUpdateTracker() {
+        logger.info("Starting updateTracker extraction...");
+        // List all UpdateTracker instances
+        int skip = 0;
+        // Peek and get the total count
+        InstanceList firstPage = listInstances("UpdateTracker", skip, 1);
+        int total = firstPage.getTotalCount();
+        int instanceCount = 0;
+        while (skip < total) {
+            logger.info("Processing UpdateTracker instances: skip=" + skip + ", total=" + total);
+            List<SimpleInstance> updateTrackers = listInstances("UpdateTracker", skip, PAGE_SIZE).getInstances();
+            if (updateTrackers == null || updateTrackers.size() == 0) {
+                break;
+            }
+            for (SimpleInstance ut : updateTrackers) {
+                SimpleInstance instance = getSimpleInstanceById(ut.getDbId());
+                if (instance == null)
+                    continue; // No updatedInstance attribute
+                SimpleInstance updatedInstance = (SimpleInstance) instance.getAttribute("updatedInstance");
+                if (updatedInstance == null || !graphInstanceCache.containsKey(updatedInstance.getDbId())) {
+                    // Don't need to instance
+                    graphInstanceCache.remove(instance.getDbId());
+                    continue; // No updatedInstance attribute or already processed
+                }
+                extractReferences(instance);
+                instanceCount++;
+            }
+            skip += PAGE_SIZE;
+        }
+        logger.info("UpdateTracker extraction completed: " + instanceCount + " instances extracted.");
+    }
+    
+    private void extractReviewStatuses() {
+        logger.info("Starting reviewStatus extraction...");
+        // List all ReviewStatus instances: Only 5 expected
+        List<SimpleInstance> reviewStatuses = listInstances("ReviewStatus", 0, PAGE_SIZE).getInstances();
+        if (reviewStatuses == null || reviewStatuses.size() == 0) {
+            logger.error("No ReviewStatus instances found!"); 
+            return;
+        }
+        for (SimpleInstance rs : reviewStatuses) {
+            SimpleInstance instance = getSimpleInstanceById(rs.getDbId());
+            extractReferences(instance);
+        }
+        logger.info("ReviewStatus extraction completed: " + reviewStatuses.size() + " instances extracted.");
+    }
+    
+    private InstanceList listInstances(String className, int skip, int limit) {
+        String url = LIST_INST_URL + className + "/" + skip + "/" + limit;
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpGet request = new HttpGet(url);
+            request.setHeader("Accept", "application/json");
+            if (jwtToken != null) {
+                request.setHeader("Authorization", "Bearer " + jwtToken);
+            }
+            HttpResponse response = httpClient.execute(request);
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode != 200) {
+                throw new RuntimeException("Failed : HTTP error code : " + statusCode);
+            }
+            String json = EntityUtils.toString(response.getEntity());
+            InstanceList instanceList = objectMapper.readValue(json, InstanceList.class);
+            return instanceList;
+        } 
+        catch (Exception e) {
+            throw new RuntimeException("Error fetching instances of " + className + " from API", e);
+        }
+    }
+    
+    private void extractEvents() {
         if (topLevelIDs == null || topLevelIDs.size() == 0)
             throw new IllegalStateException("Top-level IDs have not been set.");
         logger.info("Starting event extraction using GraphDBSlicingTool.");

@@ -51,7 +51,6 @@ import org.gk.schema.InvalidAttributeException;
 import org.gk.schema.InvalidAttributeValueException;
 import org.gk.schema.Schema;
 import org.gk.schema.SchemaClass;
-import org.gk.slicing.updateTracker.UpdateTrackerHandler;
 import org.gk.util.GKApplicationUtilities;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -429,11 +428,11 @@ public class SlicingEngine {
         if (!needUpdateTrackers)
             return; // Do nothing
         logger.info("Handling UpdateTracker...");
-        UpdateTrackerHandler updateTrackerHandler = new UpdateTrackerHandler(sourceDBA, 
-                                                                             getTargetDBA(), 
-                                                                             previousSliceDBA, 
-                                                                             defaultPersonId);
-        updateTrackerHandler.handleUpdateTrackerInstances(uploadUpdateTrackersToSource);
+//        UpdateTrackerHandler updateTrackerHandler = new UpdateTrackerHandler(sourceDBA, 
+//                                                                             getTargetDBA(), 
+//                                                                             previousSliceDBA, 
+//                                                                             defaultPersonId);
+//        updateTrackerHandler.handleUpdateTrackerInstances(uploadUpdateTrackersToSource);
         logger.info("Done UpdateTracker.");
     }
 

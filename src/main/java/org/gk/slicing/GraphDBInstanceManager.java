@@ -108,7 +108,6 @@ public class GraphDBInstanceManager {
         extractUpdateTracker();
     }
     
-    //TODO: This method may take about 3 or 4 minutes to finish. Need to optimize it!
     private void extractUpdateTracker() {
         logger.info("Starting updateTracker extraction...");
         // List all UpdateTracker instances
@@ -124,15 +123,22 @@ public class GraphDBInstanceManager {
                 break;
             }
             for (SimpleInstance ut : updateTrackers) {
-                SimpleInstance instance = getSimpleInstanceById(ut.getDbId());
+                // UpdatedTracker displayName is formated like this: Update Tracker - [Complex:1604751] CTRB1 [extracellular region] - v44:[addName]
+                // Therefore we can check if it should be processed based on updated id in display name
+                String displayName = ut.getDisplayName();
+                if (displayName == null || !displayName.contains("Update Tracker - ["))
+                    continue; // Skip it    
+                // Extract the dbId from displayName
+                String idText = displayName.substring(displayName.indexOf('[') + 1, displayName.indexOf(']')).split(":")[1];
+                Long id = null;
+                if (idText.matches("\\d+")) {
+                    id = Long.parseLong(idText);
+                    if (!graphInstanceCache.containsKey(id))
+                        continue; // Don't need to process it
+                }
+                SimpleInstance instance = getSimpleInstanceById(id);
                 if (instance == null)
                     continue; // No updatedInstance attribute
-                SimpleInstance updatedInstance = (SimpleInstance) instance.getAttribute("updatedInstance");
-                if (updatedInstance == null || !graphInstanceCache.containsKey(updatedInstance.getDbId())) {
-                    // Don't need to instance
-                    graphInstanceCache.remove(instance.getDbId());
-                    continue; // No updatedInstance attribute or already processed
-                }
                 extractReferences(instance);
                 instanceCount++;
             }

@@ -271,7 +271,7 @@ public class SlicingEngine {
         updateReviewStatusToSource(eventsWithReviewStatusUpdated);
     }
     
-    private void cleanUpNegativePrecedingEvents() throws Exception {
+    protected void cleanUpNegativePrecedingEvents() throws Exception {
         logger.info("Cleaning up NegativePrecedingEvents...");
         // Get all NegativePrecedignEvents that don't have negativeEventValues
         Set<GKInstance> toBeRemoved = new HashSet<>();
@@ -467,7 +467,7 @@ public class SlicingEngine {
      * disease part will not be handled.).
      * @throws Exception
      */
-    private void fillAttributeValuesForEntitySets() throws Exception {
+    protected void fillAttributeValuesForEntitySets() throws Exception {
         GKSchemaClass entitySet = (GKSchemaClass) sourceDBA.getSchema().getClassByName(ReactomeJavaConstants.EntitySet);
         if (entitySet.isValidAttribute(ReactomeJavaConstants.compartment))
             fillAttributeValuesForEntitySets(ReactomeJavaConstants.compartment);
@@ -608,7 +608,7 @@ public class SlicingEngine {
         return defaultIE;
     }
     
-    private void fillIncludedLocationForComplex() throws Exception {
+    protected void fillIncludedLocationForComplex() throws Exception {
         // This is just a sanity check so that this method will not work
         // for some old schema
         GKSchemaClass complexCls = (GKSchemaClass) sourceDBA.getSchema().getClassByName(ReactomeJavaConstants.Complex);
@@ -778,7 +778,8 @@ public class SlicingEngine {
     /**
      * A new FrontPage instance should be created and saved into the database.
      */
-    private void addFrontPage() {
+    protected void addFrontPage() {
+        logger.info("Adding FrontPage...");
         try {
             MySQLAdaptor targetDBA = getTargetDBA();
             Schema schema = targetDBA.getSchema();
@@ -800,13 +801,15 @@ public class SlicingEngine {
         catch(Exception e) {
             logger.error("SlicingEngine.addFrontPage(): " + e, e);
         }
+        logger.info("Done adding FrontPage.");
     }
 
     /**
      * Add release number into the database: a new table will be created to store the release number
      * information.
      */
-    private void addReleaseNumber() {
+    protected void addReleaseNumber() {
+        logger.info("Adding Release Number...");
         try {
             MySQLAdaptor targetDBA = getTargetDBA();
             SchemaClass releaseCls = targetDBA.getSchema().getClassByName(ReactomeJavaConstants._Release);
@@ -818,6 +821,7 @@ public class SlicingEngine {
         catch(Exception e) {
             logger.error("SlicingEngine.addReleaseNumber(): " + e, e);
         }
+        logger.info("Done adding release number.");
     }
     
     /**

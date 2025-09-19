@@ -112,13 +112,10 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         
         // The following steps occur at the GKSchema level. Therefore, we can just
         // call the parent class methods.
-        addReleaseStatus();
-        dumpInstances();
         
 //        validateConditions();
 
 //        extractPathwayDiagrams();
-//        extractUpdateTrackerInstances();
 
 //        PrintStream output = null;
 //        if (logFileName != null)
@@ -137,24 +134,26 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
 //        qa.validateUpdateTrackers(output);
 //        if (logFileName != null)
 //            output.close(); // Close it if output is opened by the application
-//        addReleaseStatus();
-//        logger.info("Filling Attribute Values...");
-//        // Need to fill values for Complex.includedLocation
-//        fillIncludedLocationForComplex();
-//        fillAttributeValuesForEntitySets();
+        addReleaseStatus();
+        logger.info("Filling Attribute Values...");
+        // Need to fill values for Complex.includedLocation
+        fillIncludedLocationForComplex();
+        fillAttributeValuesForEntitySets();
 //        List<GKInstance> eventsWithReviewStatusUpdated = fillReviewStatus();
 //        // There is no need to get anything here
 //        copyReviewStatus();
 //        cleanUpPathwayFigures();
 //        // Add this step to remove NegativePrecedingEvent instances that don't have negativePrecedingEvent value
-//        // These NegativePrecedingEvent instances will also be removed from their referrers.
-//        cleanUpNegativePrecedingEvents();
+        // These NegativePrecedingEvent instances will also be removed from their referrers.
+        cleanUpNegativePrecedingEvents();
 //        // This step has to be called just before dumpInstances() since the replacementInstance
 //        // slot in _Deleted will be checked against the sliceMap.
+        //TODO: This step needs to be published into GraphInstanceManager and make sure all needed instances have been
+        // extracted.
 //        handleDeletions();
-//        dumpInstances();
-//        addFrontPage();
-//        addReleaseNumber();
+        dumpInstances();
+        addFrontPage();
+        addReleaseNumber();
 //        setStableIdReleased();
 //        handleRevisions();
 //        updateReviewStatusToSource(eventsWithReviewStatusUpdated);

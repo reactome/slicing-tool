@@ -1,10 +1,14 @@
 package org.gk.slicing;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -35,6 +39,7 @@ public class GraphDBInstanceManager {
     private static final String HOST_URL = "http://localhost:9090/api/"; // Base URL for the curator-tool-ws API
     private static final String AUTH_URL = HOST_URL + "authenticate"; // Endpoint to fetch JWT token
     private static final String GET_INST_URL = HOST_URL + "curation/findByDbId/"; // Endpoint from testJSONDeserization
+    private static final String EXIST_INST_URL = HOST_URL + "curation/existsByDbId/"; // Check if an instance exists by dbId
     //@GetMapping("listInstances/{className}/{skip}/{limit}")
     private static final String LIST_INST_URL = HOST_URL+ "curation/listInstances/"; // List instances of a class
     private static final int PAGE_SIZE = 1000; // Number of instances to fetch per page
@@ -106,6 +111,136 @@ public class GraphDBInstanceManager {
         extractSpecies();
         extractReviewStatuses();
         extractUpdateTracker();
+        handleDeleted();
+    }
+    
+    /**
+     * The GraphDB version of handling deletions.
+     */
+    private void handleDeleted() {
+        logger.info("Starting handling Deleted instances...");
+        // List all Deletion instances
+        int skip = 0;
+        // Peek and get the total count
+        InstanceList firstPage = listInstances("Deleted", skip, 1);
+        int total = firstPage.getTotalCount();
+        logger.info("Total Deleted instances to process: " + total);
+        List<SimpleInstance> allDeleted = new ArrayList<>();
+        while (skip < total) {
+            logger.info("Processing Deleted instances: skip=" + skip + ", total=" + total);
+            List<SimpleInstance> deleted = listInstances("Deleted", skip, PAGE_SIZE).getInstances();
+            if (deleted == null || deleted.size() == 0) {
+                break;
+            }
+            for (SimpleInstance del : deleted) {
+                SimpleInstance instance = getSimpleInstanceById(del.getDbId());
+                if (instance == null) {
+                    logger.warn("Deletion instance with dbId " + del.getDbId() + " not found.");
+                    continue; // Cannot find it!
+                }
+                allDeleted.add(instance);
+            }
+            skip += PAGE_SIZE;
+//            break; // For testing only
+        }
+        logger.info("Total Deleted instances fetched: " + allDeleted.size());
+        ensureReplacementInstances(allDeleted);
+        // To keep the reference graph simple, we'd like to make sure all references for Deleted instances are extracted.
+        total = 0;
+        logger.info("Extracting one-hop references for all Deleted instances...");
+        for (SimpleInstance deleted : allDeleted) {
+            total++;
+            extractOneHopReferences(deleted);
+            if (total % 1000 == 0) {
+                logger.info("Processed " + total + " Deleted instances for one-hop references.");
+            }
+        }
+        logger.info("One-hop reference extraction for Deleted instances completed.");
+        logger.info("Deletion handling completed. Total deletions processed: " + allDeleted.size());
+    }
+    
+    /**
+     * It is possible a replacementInstance may be deleted in an _Deleted instance. This method is used to figure
+     * out if a replacementInstance can be found based on denormalized replacementInstanceDB_IDs in the same _Deleted
+     * instance. This is a recursive search since the replacementInstance for the deleted replacementInstance may be
+     * deleted again :-). 
+     * @param deleted
+     * @throws Exception
+     */
+    private void ensureReplacementInstances(Collection<SimpleInstance> allDeleted) {
+        logger.info("Ensuring replacement instances for Deleted instances...");
+        // Cache the deleted instance to replacement instances for quick search
+        // A deleted instance may have multiple replacement instances, which makes the matter more complicated!
+        Map<Integer, List<Integer>> deletedDBID2ReplacementDBIDs = new HashMap<>(); 
+        for (SimpleInstance deleted : allDeleted) {
+            List<Integer> deletedInstanceDB_IDList = (List<Integer>) deleted.getAttributes().get("deletedInstanceDbId");
+            if (deletedInstanceDB_IDList == null || deletedInstanceDB_IDList.size() == 0)
+                continue;
+            List<Integer> replacementInstanceDB_IDList = (List<Integer>) deleted.getAttributes().get("replacementInstanceDBIds");
+            if (replacementInstanceDB_IDList == null) {
+                // An instance may get deleted without replacement. Register it so that there is no need to check the database
+                replacementInstanceDB_IDList = Collections.EMPTY_LIST;
+            }
+            // Each deleted instance shares the same set of replacementInstances
+            for (Integer dbId : deletedInstanceDB_IDList)
+                deletedDBID2ReplacementDBIDs.put(dbId, replacementInstanceDB_IDList);
+        }
+        // Make sure replacementInstances are listed. If a replacementInstance is not listed, the code will try to find another
+        // one recursively.
+        for (SimpleInstance deleted : allDeleted) {
+            List<Integer> replacementInstanceDB_IDList = (List<Integer>) deleted.getAttributes().get("replacementInstanceDBIds");
+            if (replacementInstanceDB_IDList == null || replacementInstanceDB_IDList.size() == 0)
+                continue; // Cannot do anything
+            Set<Integer> replacementDB_IDSet = new HashSet<>();
+            for (Integer dbId : replacementInstanceDB_IDList) {
+                ensureReplacementDBID(dbId,
+                                      deletedDBID2ReplacementDBIDs,
+                                      replacementDB_IDSet);
+            }
+            List<SimpleInstance> replacementInstancesList = (List<SimpleInstance>) deleted.getAttributes().get(ReactomeJavaConstants.replacementInstances);
+            if (replacementInstancesList == null || replacementInstancesList.size() == 0)
+                continue; // Nothing can be done    
+            // To control the size of the reference graph, we will make sure referred replacementInstances have been loaded already.
+            // Remove those not loaded already.
+            replacementInstancesList.removeIf(inst -> !graphInstanceCache.containsKey(inst.getDbId()));
+            // For quick check
+            Set<Integer> idSet = replacementInstancesList.stream().map(SimpleInstance::getDbId).map(Long::intValue).collect(Collectors.toSet());
+            for (Integer dbId : replacementDB_IDSet) {
+                if (idSet.contains(dbId))
+                    continue; // Good. It is still there!
+                // Make sure this instance existing
+                if (!existsByDbId(dbId.longValue())) {
+                    logger.warn(deleted + " has a replacement instance deleted. "
+                            + "But cannot find its replacement (dbId is collected recursively): " + dbId);
+                    continue;
+                }
+                SimpleInstance inst = this.fetchSimpleInstanceFromAPI(dbId.longValue());
+                if (!replacementInstanceDB_IDList.contains(dbId))
+                    replacementInstanceDB_IDList.add(dbId);
+                replacementInstancesList.add(inst); // Directly push it into the list. It should be placed into the value.
+                logger.info(deleted + " has a replacement instance deleted but replaced with another: " + inst);
+            }
+        }
+        logger.info("Replacement instance ensuring completed.");
+    }
+    
+    /**
+     * Make sure the replacementDBIDs are not deleted. Otherwise, try to find their replacement DB_IDs recursively.
+     * @param replacementDBIDs
+     */
+    private void ensureReplacementDBID(Integer dbId,
+                                       Map<Integer, List<Integer>> deletedDBID2ReplacementDBIDs,
+                                       Set<Integer> existedDBIDs) {
+        List<Integer> replacementDBIDs = deletedDBID2ReplacementDBIDs.get(dbId);
+        if (replacementDBIDs == null) {
+            existedDBIDs.add(dbId); // This dbId has not been deleted. This is good. Nothing needs to be done.
+            return; 
+        }
+        // replacementDBIDs may be an empty List, which means it is deleted without replacement.
+        for (Integer replacementDBID : replacementDBIDs)
+            ensureReplacementDBID(replacementDBID, 
+                                  deletedDBID2ReplacementDBIDs, 
+                                  existedDBIDs);
     }
     
     private void extractUpdateTracker() {
@@ -296,6 +431,31 @@ public class GraphDBInstanceManager {
         }
     }
     
+    private void extractOneHopReferences(SimpleInstance instance) {
+        if (instance.getAttributes() == null || instance.getAttributes().size() == 0)
+            return; // Nothing more to do
+        for (String attName : instance.getAttributes().keySet()) {
+            Object attValue = instance.getAttributes().get(attName);
+            if (attValue == null)
+                continue;
+            if (attValue instanceof SimpleInstance) {
+                getSimpleInstanceById(((SimpleInstance) attValue).getDbId());
+                continue;
+            }
+            if (attValue instanceof List) {
+                List<Object> attValues = (List<Object>) attValue;
+                if (attValues.size() == 0)
+                    continue;
+                // Peek at the first element to see if it is a reference
+                if (!(attValues.get(0) instanceof SimpleInstance))
+                    continue; // Not a list of references
+                for (Object obj : attValues) {
+                    getSimpleInstanceById(((SimpleInstance) obj).getDbId());
+                }
+            }
+        }
+    }
+    
     private boolean isEvent(SimpleInstance instance) {
         Class<? extends DatabaseObject> cls = instance.getGraphModelClass();
         if (cls == null)
@@ -323,6 +483,26 @@ public class GraphDBInstanceManager {
     
     public String getJwtToken() {
         return jwtToken;
+    }
+    
+    private boolean existsByDbId(Long dbId) {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpGet request = new HttpGet(EXIST_INST_URL + dbId);
+            request.setHeader("Accept", "application/json");
+            if (jwtToken != null) {
+                request.setHeader("Authorization", "Bearer " + jwtToken);
+            }
+            HttpResponse response = httpClient.execute(request);
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode != 200) {
+                throw new RuntimeException("Failed : HTTP error code : " + statusCode);
+            }
+            Boolean exists = Boolean.valueOf(EntityUtils.toString(response.getEntity()));
+            return exists;
+        } 
+        catch (Exception e) {
+            throw new RuntimeException("Error checking existence of instance by dbId", e);
+        }
     }
 
     private SimpleInstance fetchSimpleInstanceFromAPI(Long dbId) {

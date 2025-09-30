@@ -34,6 +34,10 @@ public class GraphToRelInstanceConvertManager {
         return instance;
     }
     
+    public Map<Long, GKInstance> getConvertedInstances() {
+        return gkInstanceCache;
+    }
+    
     public void setMySQLAdaptor(MySQLAdaptor dba) {
         this.dba = dba;
     }
@@ -46,6 +50,10 @@ public class GraphToRelInstanceConvertManager {
             clsName = ReactomeJavaConstants.ReactionlikeEvent;
         else if (clsName.equals("UpdateTracker"))
             clsName = ReactomeJavaConstants._UpdateTracker;
+        else if (clsName.equals("Deleted"))
+            clsName = ReactomeJavaConstants._Deleted;
+        else if (clsName.equals("DeletedInstance"))
+            clsName = "_DeletedInstance";
         return clsName;
     }
     
@@ -58,6 +66,10 @@ public class GraphToRelInstanceConvertManager {
             return ReactomeJavaConstants.modified;
         else if (attName.equals("doRelease"))
             return ReactomeJavaConstants._doRelease;
+        else if (attName.equals("deletedInstanceDbId"))
+            return ReactomeJavaConstants.deletedInstanceDB_ID;
+        else if (attName.equals("remplacementDbIds"))
+            return "replacementDB_IDs";
         else if ((schemaClassName.equals(ReactomeJavaConstants.Compartment) || 
                  schemaClassName.startsWith("GO_")) 
                 && attName.equals(ReactomeJavaConstants.identifier))
@@ -139,7 +151,6 @@ public class GraphToRelInstanceConvertManager {
                 }
             }
         }
-        gkInstanceCache.put(simpleInstance.getDbId(), gkInst);
         return gkInst;
     }
 }

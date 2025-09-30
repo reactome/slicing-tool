@@ -160,16 +160,12 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
     }
     
     private Map<Long, GKInstance> convertToGKInstances(Map<Long, SimpleInstance> simpleInstances) throws Exception {
-        Map<Long, GKInstance> id2InstanceMap = new HashMap<>();
         GraphToRelInstanceConvertManager conversionManager = GraphToRelInstanceConvertManager.getInstance();
         for (Long dbId : simpleInstances.keySet()) {
             SimpleInstance simpleInstance = simpleInstances.get(dbId);
-            GKInstance gkInstance = conversionManager.convertGraphToRelInstance(simpleInstance,
-                    simpleInstances);
-            if (gkInstance != null)
-                id2InstanceMap.put(dbId, gkInstance);
+            conversionManager.convertGraphToRelInstance(simpleInstance, simpleInstances);
         }
-        return id2InstanceMap;
+        return conversionManager.getConvertedInstances();
     }
     
     /**

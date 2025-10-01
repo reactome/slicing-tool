@@ -68,8 +68,8 @@ public class GraphToRelInstanceConvertManager {
             return ReactomeJavaConstants._doRelease;
         else if (attName.equals("deletedInstanceDbId"))
             return ReactomeJavaConstants.deletedInstanceDB_ID;
-        else if (attName.equals("remplacementDbIds"))
-            return "replacementDB_IDs";
+        else if (attName.equals("replacementInstanceDbIds"))
+            return "replacementInstanceDB_IDs";
         else if ((schemaClassName.equals(ReactomeJavaConstants.Compartment) || 
                  schemaClassName.startsWith("GO_")) 
                 && attName.equals(ReactomeJavaConstants.identifier))

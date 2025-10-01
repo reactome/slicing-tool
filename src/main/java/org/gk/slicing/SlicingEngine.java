@@ -116,7 +116,7 @@ public class SlicingEngine {
     // To control some parameters for testing
     private boolean isInDev = false;
     private String path = "/usr/local/mysql/bin/";
-    private boolean setReleasedInStableIdentifier = false;
+    protected boolean setReleasedInStableIdentifier = false;
     private Long defaultPersonId = null;
     // Control UpdateTracker instance creation and writing back to gk_central
     private boolean needUpdateTrackers = false;

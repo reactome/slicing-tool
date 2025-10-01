@@ -3,7 +3,7 @@ package org.gk.slicing;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -117,6 +117,8 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
 
 //        extractPathwayDiagrams();
 
+        // The following QA steps are disabled since they are either not needed for GraphDB slicing
+        // or they should be moved by the actual QA checks in other places.
 //        PrintStream output = null;
 //        if (logFileName != null)
 //            output = new PrintStream(new FileOutputStream(logFileName));
@@ -154,9 +156,38 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         dumpInstances();
         addFrontPage();
         addReleaseNumber();
-//        setStableIdReleased();
+        setStableIdReleased();
 //        handleRevisions();
 //        updateReviewStatusToSource(eventsWithReviewStatusUpdated);
+    }
+    
+    private void setStableIdReleased() throws Exception {
+        if (!setReleasedInStableIdentifier)
+            return; // There is no need to do this.
+        // Make sure released attribute in StableIdentifiers are true in
+        // the target database
+        logger.info("set released = true for target database...");
+        try {
+            @SuppressWarnings("unchecked")
+            Collection<GKInstance> c = targetDBA.fetchInstancesByClass(ReactomeJavaConstants.StableIdentifier);
+            for (GKInstance inst : c) {
+                Boolean released = (Boolean) inst.getAttributeValue(ReactomeJavaConstants.released);
+                if (released == null || !released) {
+                    inst.setAttributeValue(ReactomeJavaConstants.released,
+                                           Boolean.TRUE);
+                    targetDBA.updateInstanceAttribute(inst,
+                                                      ReactomeJavaConstants.released);
+                }
+            }
+        }
+        catch(Exception e) {
+            logger.error("SlicingEngine.setStableIdReleased(): " + e, e);
+            return; // Don't need to continue
+        }
+        // Now set released = true in the source database
+        GraphDBInstanceManager manager = GraphDBInstanceManager.getInstance();
+        manager.setReleasedInStableIdentifiers();
+        logger.info("Finished setting released = true for target database.");
     }
     
     private Map<Long, GKInstance> convertToGKInstances(Map<Long, SimpleInstance> simpleInstances) throws Exception {

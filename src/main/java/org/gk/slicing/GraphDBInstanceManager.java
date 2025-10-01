@@ -40,6 +40,7 @@ public class GraphDBInstanceManager {
     private static final String AUTH_URL = HOST_URL + "authenticate"; // Endpoint to fetch JWT token
     private static final String GET_INST_URL = HOST_URL + "curation/findByDbId/"; // Endpoint from testJSONDeserization
     private static final String EXIST_INST_URL = HOST_URL + "curation/existsByDbId/"; // Check if an instance exists by dbId
+    private static final String UPDATE_INST_URL = HOST_URL + "curation/commit"; // Update an instance
     //@GetMapping("listInstances/{className}/{skip}/{limit}")
     private static final String LIST_INST_URL = HOST_URL+ "curation/listInstances/"; // List instances of a class
     private static final int PAGE_SIZE = 1000; // Number of instances to fetch per page
@@ -112,6 +113,33 @@ public class GraphDBInstanceManager {
         extractReviewStatuses();
         extractUpdateTracker();
         handleDeleted();
+    }
+    
+    
+    /**
+     * Set released as true for all StableIdentifier instances pulled out from the graph database.
+     */
+    protected void setReleasedInStableIdentifiers() {
+        logger.info("Setting released=true for all StableIdentifier instances...");
+        for (SimpleInstance instance : graphInstanceCache.values()) {
+            if (!instance.getSchemaClassName().equals(ReactomeJavaConstants.StableIdentifier))
+                continue;
+            // Maybe there is something wrong with the instance
+            if (instance.getAttributes() == null) {
+                logger.warn("StableIdentifier instance " + instance + " has no attributes.");
+                continue;
+            }
+            Boolean released = (Boolean) instance.getAttributes().get(ReactomeJavaConstants.released);
+            if (released != null && released)
+                continue; // Already released
+            instance.getAttributes().put(ReactomeJavaConstants.released, Boolean.TRUE);
+            // Need to commit this change back to the graph database
+            SimpleInstance updated = updateInstanceViaAPI(instance);
+            if (updated == null) {
+                logger.error("Failed to update StableIdentifier instance: " + instance);
+            }
+        }
+        logger.info("Setting released=true for StableIdentifier instances completed.");
     }
     
     /**
@@ -188,7 +216,18 @@ public class GraphDBInstanceManager {
         // Make sure replacementInstances are listed. If a replacementInstance is not listed, the code will try to find another
         // one recursively.
         for (SimpleInstance deleted : allDeleted) {
-            List<Integer> replacementInstanceDB_IDList = (List<Integer>) deleted.getAttributes().get("replacementInstanceDBIds");
+            // Make sure replacementInstances have what we want to display
+            List<SimpleInstance> replacementInstancesList = (List<SimpleInstance>) deleted.getAttributes().get(ReactomeJavaConstants.replacementInstances);
+            if (replacementInstancesList == null) {
+                replacementInstancesList = new ArrayList<>();
+                deleted.getAttributes().put(ReactomeJavaConstants.replacementInstances, replacementInstancesList);
+            }
+            // To control the size of the reference graph, we will make sure referred replacementInstances have been loaded already.
+            // Remove those not loaded already.
+            replacementInstancesList.removeIf(inst -> !graphInstanceCache.containsKey(inst.getDbId()));
+            
+            // In case a replacementInstance is deleted, we need to find another replacementInstance recursively.
+            List<Integer> replacementInstanceDB_IDList = (List<Integer>) deleted.getAttributes().get("replacementInstanceDbIds");
             if (replacementInstanceDB_IDList == null || replacementInstanceDB_IDList.size() == 0)
                 continue; // Cannot do anything
             Set<Integer> replacementDB_IDSet = new HashSet<>();
@@ -197,24 +236,20 @@ public class GraphDBInstanceManager {
                                       deletedDBID2ReplacementDBIDs,
                                       replacementDB_IDSet);
             }
-            List<SimpleInstance> replacementInstancesList = (List<SimpleInstance>) deleted.getAttributes().get(ReactomeJavaConstants.replacementInstances);
-            if (replacementInstancesList == null || replacementInstancesList.size() == 0)
-                continue; // Nothing can be done    
-            // To control the size of the reference graph, we will make sure referred replacementInstances have been loaded already.
-            // Remove those not loaded already.
-            replacementInstancesList.removeIf(inst -> !graphInstanceCache.containsKey(inst.getDbId()));
+            if (replacementDB_IDSet.size() == 0)
+                continue; // Nothing can be done
             // For quick check
             Set<Integer> idSet = replacementInstancesList.stream().map(SimpleInstance::getDbId).map(Long::intValue).collect(Collectors.toSet());
             for (Integer dbId : replacementDB_IDSet) {
                 if (idSet.contains(dbId))
                     continue; // Good. It is still there!
-                // Make sure this instance existing
-                if (!existsByDbId(dbId.longValue())) {
+                // Use pull out instances only
+                SimpleInstance inst = graphInstanceCache.get(dbId.longValue());
+                if (inst == null) {
                     logger.warn(deleted + " has a replacement instance deleted. "
-                            + "But cannot find its replacement (dbId is collected recursively): " + dbId);
+                            + "But cannot find its replacement (dbId is collected recursively) in the current slice: " + dbId);
                     continue;
                 }
-                SimpleInstance inst = this.fetchSimpleInstanceFromAPI(dbId.longValue());
                 if (!replacementInstanceDB_IDList.contains(dbId))
                     replacementInstanceDB_IDList.add(dbId);
                 replacementInstancesList.add(inst); // Directly push it into the list. It should be placed into the value.
@@ -408,6 +443,7 @@ public class GraphDBInstanceManager {
     private void extractReferences(SimpleInstance instance) {
         if (instance.getAttributes() == null || instance.getAttributes().size() == 0)
             return; // Nothing more to do
+//        logger.info("Extracting references for instance: " + instance);
         refsProcessedIds.add(instance.getDbId());
         for (String attName : instance.getAttributes().keySet()) {
             Object attValue = instance.getAttributes().get(attName);
@@ -522,6 +558,27 @@ public class GraphDBInstanceManager {
         } 
         catch (Exception e) {
             throw new RuntimeException("Error fetching SimpleInstance from API", e);
+        }
+    }
+    
+    private SimpleInstance updateInstanceViaAPI(SimpleInstance instance) {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpPost post = new HttpPost(UPDATE_INST_URL);
+            post.setHeader("Content-Type", "application/json");
+            if (jwtToken != null) {
+                post.setHeader("Authorization", "Bearer " + jwtToken);
+            }
+            String jsonObj = objectMapper.writeValueAsString(instance);
+            post.setEntity(new StringEntity(jsonObj));
+            HttpResponse response = httpClient.execute(post);
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode != 200) {
+                throw new RuntimeException("Failed : HTTP error code : " + statusCode);
+            }
+            String json = EntityUtils.toString(response.getEntity());
+            return objectMapper.readValue(json, SimpleInstance.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Error updating instance via API", e);
         }
     }
 

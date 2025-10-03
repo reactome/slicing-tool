@@ -456,7 +456,7 @@ public class SlicingEngine {
     		if (!inst.getSchemClass().isa(ReactomeJavaConstants.EntitySet))
     			continue;
 
-			logger.info(String.format("Populating %s in %s", attributeName, inst));
+			logger.debug(String.format("Populating %s in %s", attributeName, inst));
     		populateEntitySet(inst, attributeName);
     	}
     }

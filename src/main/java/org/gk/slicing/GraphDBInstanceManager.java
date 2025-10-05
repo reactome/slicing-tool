@@ -332,7 +332,7 @@ public class GraphDBInstanceManager {
         logger.info("ReviewStatus extraction completed: " + reviewStatuses.size() + " instances extracted.");
     }
     
-    private InstanceList listInstances(String className, int skip, int limit) {
+    protected InstanceList listInstances(String className, int skip, int limit) {
         String url = LIST_INST_URL + className + "/" + skip + "/" + limit;
         try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
             HttpGet request = new HttpGet(url);

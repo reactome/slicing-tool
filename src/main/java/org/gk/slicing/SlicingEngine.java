@@ -1586,6 +1586,12 @@ public class SlicingEngine {
                 defaultPersonId = getInput("Enter the DB_ID for the default person to create InstanceEdit:");
             }
             
+            // For cytoscape js
+            if (engine instanceof GraphDBSliceToRelTool) {
+                String folderName = properties.getProperty("cytoscapeJSJsonFolder");
+                ((GraphDBSliceToRelTool)engine).setCytoscapeFolderName(folderName);
+            }
+            
             // For review status
             String updateReviewStatusToSource = properties.getProperty("updateReviewStatusToSource");
             if (updateReviewStatusToSource == null || updateReviewStatusToSource.trim().length() == 0) {

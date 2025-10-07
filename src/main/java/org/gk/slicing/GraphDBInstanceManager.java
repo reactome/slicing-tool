@@ -112,7 +112,56 @@ public class GraphDBInstanceManager {
         extractSpecies();
         extractReviewStatuses();
         extractUpdateTracker();
+        extractPathwayDiagrams();
         handleDeleted();
+    }
+    
+    private void extractPathwayDiagrams() {
+        logger.info("Starting PathwayDiagram extraction...");
+        // We'd like to generate a set of pathway diagram display name so that we can quickly check if a PathwayDiagram
+        // instance should be processed.
+        Set<String> diagramDisplayNames = graphInstanceCache.values().stream()
+                .filter(inst -> inst.getSchemaClassName().equals(ReactomeJavaConstants.Pathway) ||
+                                inst.getSchemaClassName().equals("TopLevelPathway") ||
+                                inst.getSchemaClassName().equals(ReactomeJavaConstants.CellLineagePath))
+                .map(inst -> "Diagram of " + inst.getDisplayName())
+                .collect(Collectors.toSet());
+        // List all PathwayDiagram instances
+        int skip = 0;
+        // Peek and get the total count
+        InstanceList firstPage = listInstances("PathwayDiagram", skip, 1);
+        int total = firstPage.getTotalCount();
+        logger.info("Total PathwayDiagram instances to process: " + total);
+        int instanceCount = 0;
+        while (skip < total) {
+            logger.info("Processing PathwayDiagram instances: skip=" + skip + ", total=" + total);
+            List<SimpleInstance> diagrams = listInstances("PathwayDiagram", skip, PAGE_SIZE).getInstances();
+            if (diagrams == null || diagrams.size() == 0) {
+                break;
+            }
+            for (SimpleInstance pd : diagrams) {
+                String displayName = pd.getDisplayName();
+                boolean isNeeded = false;
+                for (String name : diagramDisplayNames) {
+                    // The diagram may be used for disease pathway and has longer name
+                    if (displayName != null && displayName.contains(name)) {
+                        isNeeded = true;
+                        break;
+                    }
+                }
+                if (!isNeeded)
+                    continue; // Skip it
+                SimpleInstance instance = getSimpleInstanceById(pd.getDbId());
+                if (instance == null) {
+                    logger.warn("PathwayDiagram instance with dbId " + pd.getDbId() + " not found.");
+                    continue; // Cannot find it!
+                }
+                extractOneHopReferences(instance);
+                instanceCount++;
+            }
+            skip += PAGE_SIZE;
+        }
+        logger.info("PathwayDiagram extraction completed: " + instanceCount + " instances extracted.");
     }
     
     

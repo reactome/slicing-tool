@@ -52,9 +52,27 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 public class CytoscapJSToDiagramXMLConverter {
     private static final Logger logger = LoggerFactory.getLogger(CytoscapJSToDiagramXMLConverter.class);
+    // Use to check if two points are the same
     private static final double TOLERANCE = 1.5d;
 
     public CytoscapJSToDiagramXMLConverter() {
+    }
+    
+    public String convert(File cytoscapeJSFile,
+                         GKInstance pathwayInstance,
+                         GKInstance diagramInstance) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode root = mapper.readTree(cytoscapeJSFile);
+        
+        RenderablePathway diagram = new RenderablePathway();
+        diagram.setReactomeDiagramId(diagramInstance.getDBID());
+        diagram.setHideCompartmentInNode(true);
+        convert(root, diagram, (MySQLAdaptor)pathwayInstance.getDbAdaptor());
+
+        // Convert diagram to xml
+        DiagramGKBWriter writer = new DiagramGKBWriter();
+        String diagramXML = writer.generateXMLString(diagram);
+        return diagramXML;
     }
 
     public GKInstance convert(File cytoscapeJSFile,

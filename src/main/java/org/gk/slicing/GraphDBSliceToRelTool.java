@@ -24,24 +24,33 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
     private static final Logger logger = LoggerFactory.getLogger(GraphDBSliceToRelTool.class);
     // Temporary storage for top-level IDs to be sliced for debugging and testing
     private Map<Long, GKInstance> id2InstanceMap;
-    
+    private String cytoscapeFolderName;
+
     public GraphDBSliceToRelTool() {
     }
-    
+
+    public String getCytoscapeFolderName() {
+        return cytoscapeFolderName;
+    }
+
+    public void setCytoscapeFolderName(String cytoscapeFolderName) {
+        this.cytoscapeFolderName = cytoscapeFolderName;
+    }
+
     public void setTargetDBA(MySQLAdaptor dba) {
         // Initialize the conversion manager with the target DBA
         GraphToRelInstanceConvertManager conversionManager = GraphToRelInstanceConvertManager.getInstance();
         conversionManager.setMySQLAdaptor(dba);
     }
-    
+
     public void setTopLevelIDs(List<Long> topLevelIDs) {
         this.topLevelIDs = topLevelIDs;
     }
-    
+
     public Map<Long, GKInstance> getExtractedInstances() {
         return id2InstanceMap;
     }
-    
+
     /**
      * Use this method, instead of getReleasedProcesses() in the parent class, to read top-level IDs
      * to have a better control of what to be sliced (e.g. comment out some IDs).
@@ -75,7 +84,7 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         logger.info("Total IDs read from file: " + dbIds.size());
         return dbIds;
     }
-    
+
     private List<Long> readSpeciesIDs() throws Exception {
         if (speciesIDs != null)
             return null;
@@ -87,7 +96,7 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         }
         return readDbIds(is);
     }
-    
+
     @Override
     public void slice() throws Exception {
         if (!prepareTargetDatabase())
@@ -96,7 +105,7 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         //TODO: Make sure to validate the requirements: e.g. processFileName, speciesFileName, etc.
         GraphToRelInstanceConvertManager conversionManager = GraphToRelInstanceConvertManager.getInstance();
         conversionManager.setMySQLAdaptor(targetDBA);
-        
+
         GraphDBInstanceManager graphDBManager = GraphDBInstanceManager.getInstance();
         graphDBManager.setTopLevelIDs(getReleasedProcesses());
         graphDBManager.setSpeciesIds(readSpeciesIDs());
@@ -104,63 +113,131 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         Map<Long, SimpleInstance> extractedInsts = graphDBManager.getExtractedInstances();
         logger.info("Total extracted instances: " + extractedInsts.size());
         logger.info("Converting to GKInstances...");
-        
+
         id2InstanceMap = convertToGKInstances(extractedInsts);
         resetEmptyDatetimeInInstanceEdits(id2InstanceMap);
-        
+
         super.sliceMap = id2InstanceMap;
-        
+
         // The following steps occur at the GKSchema level. Therefore, we can just
         // call the parent class methods.
-        
-//        validateConditions();
 
-//        extractPathwayDiagrams();
+        //        validateConditions();
+
+        extractPathwayDiagrams();
 
         // The following QA steps are disabled since they are either not needed for GraphDB slicing
         // or they should be moved by the actual QA checks in other places.
-//        PrintStream output = null;
-//        if (logFileName != null)
-//            output = new PrintStream(new FileOutputStream(logFileName));
-//        else
-//            output = System.err;
-//        SlicingQualityAssay qa = new SlicingQualityAssay();
-//        qa.setSliceMap(this.sliceMap);
-//        qa.setSourceDBA(sourceDBA);
-//        qa.validateExistence(output);
-//        qa.validateEventsInHierarchy(topLevelIDs,
-//                                     output);
-//        qa.validateAttributes(output);
-//        qa.validateStableIds(output); // Added a new check for StableIds on August 1, 2016
-//        // Better call this method as the last QA to make sure the attributes have been checked.
-//        qa.validateUpdateTrackers(output);
-//        if (logFileName != null)
-//            output.close(); // Close it if output is opened by the application
+        //        PrintStream output = null;
+        //        if (logFileName != null)
+        //            output = new PrintStream(new FileOutputStream(logFileName));
+        //        else
+        //            output = System.err;
+        //        SlicingQualityAssay qa = new SlicingQualityAssay();
+        //        qa.setSliceMap(this.sliceMap);
+        //        qa.setSourceDBA(sourceDBA);
+        //        qa.validateExistence(output);
+        //        qa.validateEventsInHierarchy(topLevelIDs,
+        //                                     output);
+        //        qa.validateAttributes(output);
+        //        qa.validateStableIds(output); // Added a new check for StableIds on August 1, 2016
+        //        // Better call this method as the last QA to make sure the attributes have been checked.
+        //        qa.validateUpdateTrackers(output);
+        //        if (logFileName != null)
+        //            output.close(); // Close it if output is opened by the application
         addReleaseStatus();
         logger.info("Filling Attribute Values...");
         // Need to fill values for Complex.includedLocation
         fillIncludedLocationForComplex();
         fillAttributeValuesForEntitySets();
-//        List<GKInstance> eventsWithReviewStatusUpdated = fillReviewStatus();
-//        // There is no need to get anything here
-//        copyReviewStatus();
-//        cleanUpPathwayFigures();
-//        // Add this step to remove NegativePrecedingEvent instances that don't have negativePrecedingEvent value
+        //        List<GKInstance> eventsWithReviewStatusUpdated = fillReviewStatus();
+        //        // There is no need to get anything here
+        //        copyReviewStatus();
+        //        cleanUpPathwayFigures();
+        //        // Add this step to remove NegativePrecedingEvent instances that don't have negativePrecedingEvent value
         // These NegativePrecedingEvent instances will also be removed from their referrers.
         cleanUpNegativePrecedingEvents();
-//        // This step has to be called just before dumpInstances() since the replacementInstance
-//        // slot in _Deleted will be checked against the sliceMap.
+        //        // This step has to be called just before dumpInstances() since the replacementInstance
+        //        // slot in _Deleted will be checked against the sliceMap.
         //TODO: This step needs to be published into GraphInstanceManager and make sure all needed instances have been
         // extracted.
-//        handleDeletions();
+        //        handleDeletions();
         dumpInstances();
         addFrontPage();
         addReleaseNumber();
         setStableIdReleased();
-//        handleRevisions();
-//        updateReviewStatusToSource(eventsWithReviewStatusUpdated);
+        //        handleRevisions();
+        //        updateReviewStatusToSource(eventsWithReviewStatusUpdated);
     }
-    
+
+    /**
+     * This overridden method is used to handle the context of PathwayDiagrams.
+     */
+    @Override
+    protected void extractPathwayDiagrams() throws Exception {
+        // Additional step to remove events that should not be released but in the diagrams for some reasons
+        CytoscapJSToDiagramXMLConverter converter = new CytoscapJSToDiagramXMLConverter();
+        for (Long dbId : sliceMap.keySet()) {
+            GKInstance inst = sliceMap.get(dbId);
+            if (!inst.getSchemClass().isa(ReactomeJavaConstants.PathwayDiagram))
+                continue;
+            @SuppressWarnings("unchecked")
+            List<GKInstance> representedPathways = inst.getAttributeValuesList(ReactomeJavaConstants.representedPathway);
+            if (representedPathways == null || representedPathways.isEmpty())
+                continue;
+            if (!sliceMap.containsKey(representedPathways.get(0).getDBID())) {
+                logger.info("Removing PathwayDiagram " + inst + " since its representedPathway is not in the slice.");
+                sliceMap.remove(dbId);
+            }
+            GKInstance pathway = null;
+            if (representedPathways.size() == 1)
+                pathway = representedPathways.get(0);
+            else {
+                // Need to find the first one that is normal
+                for (GKInstance p : representedPathways) {
+                    if (p.getAttributeValue(ReactomeJavaConstants.disease) == null) {
+                        pathway = p;
+                        break;
+                    }
+                }
+            }
+            if (pathway == null) {
+                logger.error("Cannot find a normal representedPathway for " + inst);
+                continue;
+            }
+            // Check if there is any changed diagram in cytoscape folder
+            boolean isHandled = false;
+            if (cytoscapeFolderName != null) {
+                String fileName = cytoscapeFolderName + "/" + pathway.getDBID() + ".json";
+                java.io.File f = new java.io.File(fileName);
+                if (f.exists()) {
+                    try {
+                        String xml = converter.convert(f, pathway, inst);
+                        inst.setAttributeValue(ReactomeJavaConstants.storedATXML, xml);
+                        isHandled = true;
+                        logger.info("Updated diagramXML for " + inst + " from " + fileName);
+                    }
+                    catch(Exception e) {
+                        logger.error("SlicingEngine.extractPathwayDiagrams(): " + e, e);
+                    }
+                }
+            }
+            if (!isHandled) {
+                // There is nothing changed. We pull the existing diagramXML from the source database.
+                GKInstance sourceInst = sourceDBA.fetchInstance(dbId);
+                if (sourceInst != null) {
+                    Object xml = sourceInst.getAttributeValue(ReactomeJavaConstants.storedATXML);
+                    if (xml != null)
+                        inst.setAttributeValue(ReactomeJavaConstants.storedATXML, xml);
+                }
+                else {
+                    logger.error("Cannot find PathwayDiagram " + dbId + " in the source database!");
+                }
+            }
+        }
+        logger.info("extractPathwayDiagrams(): " + sliceMap.size());
+    }
+
     private void setStableIdReleased() throws Exception {
         if (!setReleasedInStableIdentifier)
             return; // There is no need to do this.
@@ -174,9 +251,9 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
                 Boolean released = (Boolean) inst.getAttributeValue(ReactomeJavaConstants.released);
                 if (released == null || !released) {
                     inst.setAttributeValue(ReactomeJavaConstants.released,
-                                           Boolean.TRUE);
+                            Boolean.TRUE);
                     targetDBA.updateInstanceAttribute(inst,
-                                                      ReactomeJavaConstants.released);
+                            ReactomeJavaConstants.released);
                 }
             }
         }
@@ -189,7 +266,7 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         manager.setReleasedInStableIdentifiers();
         logger.info("Finished setting released = true for target database.");
     }
-    
+
     private Map<Long, GKInstance> convertToGKInstances(Map<Long, SimpleInstance> simpleInstances) throws Exception {
         GraphToRelInstanceConvertManager conversionManager = GraphToRelInstanceConvertManager.getInstance();
         for (Long dbId : simpleInstances.keySet()) {
@@ -198,7 +275,7 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         }
         return conversionManager.getConvertedInstances();
     }
-    
+
     /**
      * The value '0000-00-00 00:00:00' is not a valid DATETIME under modern MySQL settings.
      * Since MySQL 5.7 (and in MySQL 8.x), strict mode is enabled by default, which forbids “zero” dates.
@@ -220,6 +297,6 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         }
         logger.info("Finished resetting empty dateTime values in InstanceEdit instances.");
     }
-    
+
 
 }

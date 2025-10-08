@@ -8,7 +8,6 @@ import org.gk.model.GKInstance;
 import org.gk.model.ReactomeJavaConstants;
 import org.gk.persistence.MySQLAdaptor;
 import org.gk.schema.SchemaAttribute;
-import org.gk.schema.SchemaClass;
 import org.reactome.curation.model.SimpleInstance;
 
 /**
@@ -92,13 +91,11 @@ public class GraphToRelInstanceConvertManager {
         SimpleInstance filledInstance = id2graphInst.get(simpleInstance.getDbId());
         if (filledInstance != null)
             simpleInstance = filledInstance; // Otherwise, use the given instance
-        SchemaClass gkSchemaClass = dba.getSchema().getClassByName(getSchemaClassName(simpleInstance));
-        // Create a new copy of GKInstance
-        gkInst = new GKInstance();
-        gkInst.setDBID(simpleInstance.getDbId());
+        // Let MySQLAdaptor to create a GKInstance so that it is cached properly
+        // for later use (e.g. Diagram checking)
+        gkInst = (GKInstance) dba.getInstance(getSchemaClassName(simpleInstance), simpleInstance.getDbId());
         gkInst.setDisplayName(simpleInstance.getDisplayName());
-        gkInst.setSchemaClass(gkSchemaClass);
-        gkInst.setDbAdaptor(dba);
+        // We'd like to handle cache here by ourselves to avoid any potential issue
         gkInstanceCache.put(simpleInstance.getDbId(), gkInst); // Cache early to handle circular references
         // Map attributes
         if (simpleInstance.getAttributes() != null) {
@@ -108,13 +105,13 @@ public class GraphToRelInstanceConvertManager {
                 if (attrValue == null || attrName.equals("stId") || attrName.equals("modified"))
                     continue;
                 // Need some conversion from the graph attribute name to the relational attribute name
-                attrName = getAtttributeName(attrName, gkSchemaClass.getName());
+                attrName = getAtttributeName(attrName, gkInst.getSchemClass().getName());
                 if (attrName.equals(ReactomeJavaConstants.DB_ID)) {
                     // Convert from Integer to Long
                     attrValue = Long.valueOf(attrValue.toString());
                 }
                 // The following will throw exception if the attribute is not defined in the schema
-                SchemaAttribute schemaAttr = gkSchemaClass.getAttribute(attrName);
+                SchemaAttribute schemaAttr = gkInst.getSchemClass().getAttribute(attrName);
                 if (schemaAttr.isInstanceTypeAttribute()) {
                     if (attrValue instanceof SimpleInstance) {
                         // Recursively convert to GKInstance

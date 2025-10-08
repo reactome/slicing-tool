@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.apache.log4j.Logger;
 import org.gk.model.GKInstance;
 import org.gk.model.InstanceUtilities;
 import org.gk.model.ReactomeJavaConstants;
@@ -33,6 +32,8 @@ import org.gk.render.Renderable;
 import org.gk.render.RenderableCompartment;
 import org.gk.render.RenderablePathway;
 import org.gk.schema.InvalidAttributeException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class is used to handle pathway diagram related activities during slicing.
@@ -42,7 +43,7 @@ import org.gk.schema.InvalidAttributeException;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class PathwayDiagramSlicingHelper {
     // Logger for this class.
-    private final static Logger logger = Logger.getLogger(PathwayDiagramSlicingHelper.class);
+    private final static Logger logger = LoggerFactory.getLogger(PathwayDiagramSlicingHelper.class);
     protected boolean isInDev = false;
     // Cached for helping diagram processing
     private DiagramGKBReader diagramReader;
@@ -78,6 +79,12 @@ public class PathwayDiagramSlicingHelper {
             GKInstance instance = dba.fetchInstance(r.getReactomeId());
             if (instance == null) {
                 logger.warn(r.getReactomeId() + " in " +  diagramInstance.getDisplayName() + " is not in the slice databasae!");
+                // Remove it if it is an Event
+                if (r instanceof ProcessNode || r instanceof HyperEdge) {
+                    processDoNotReleaseEvent(r, 
+                                             toBeRemoved,
+                                             dba);
+                }
                 continue;
             }
             if (!instance.getSchemClass().isValidAttribute(ReactomeJavaConstants._doRelease)) {
@@ -281,6 +288,7 @@ public class PathwayDiagramSlicingHelper {
             }
         }
     }
+    
     
     /**
      * This method is used to load contained sub-pathway diagrams for a passed diagram.

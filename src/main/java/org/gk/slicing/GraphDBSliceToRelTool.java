@@ -235,6 +235,15 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
                 }
             }
         }
+        // Remove events that are not in the slice, which means they are not released.
+        // Additional step to remove events that should not be released but in the diagrams for some reasons
+        PathwayDiagramSlicingHelper diagramHelper = new PathwayDiagramSlicingHelper();
+        for (Long dbId : sliceMap.keySet()) {
+            GKInstance inst = sliceMap.get(dbId);
+            if (inst.getSchemClass().isa(ReactomeJavaConstants.PathwayDiagram)) {
+                diagramHelper.removeDoNotReleaseEvents(inst, targetDBA);
+            }
+        }
         logger.info("extractPathwayDiagrams(): " + sliceMap.size());
     }
 

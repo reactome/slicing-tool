@@ -50,6 +50,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /**
  * This class is responsible for converting Cytoscape.js JSON representations of biological pathways to the Reactome Diagram XML format.
  */
+@SuppressWarnings("unchecked")
 public class CytoscapJSToDiagramXMLConverter {
     private static final Logger logger = LoggerFactory.getLogger(CytoscapJSToDiagramXMLConverter.class);
     // Use to check if two points are the same
@@ -103,7 +104,7 @@ public class CytoscapJSToDiagramXMLConverter {
         // Convert diagram to xml
         DiagramGKBWriter writer = new DiagramGKBWriter();
         String diagramXML = writer.generateXMLString(diagram);
-//        System.out.println(diagramXML);
+        System.out.println(diagramXML);
         diagramInstance.setAttributeValue(ReactomeJavaConstants.storedATXML, diagramXML);
 
         return diagramInstance;
@@ -694,6 +695,7 @@ public class CytoscapJSToDiagramXMLConverter {
                                     RenderablePathway diagram,
                                     JsonNode cytoscapeNode) throws Exception {
         Map<String, Long> nameToIdMap = fetchCompartmentNameToIdMap();
+        List<RenderableCompartment> compartments = new ArrayList<>();
         for (Integer compartmentId : id2Compartment.keySet()) {
             List<JsonNode> nodes = id2Compartment.get(compartmentId);
             // Figure out which is inner and which is outer
@@ -720,6 +722,7 @@ public class CytoscapJSToDiagramXMLConverter {
             }
 
             RenderableCompartment compartment = new RenderableCompartment();
+            compartments.add(compartment);
             compartment.setReactomeId(compartmentDbId);
             compartment.setID(compartmentId);
 
@@ -750,6 +753,14 @@ public class CytoscapJSToDiagramXMLConverter {
 
             diagram.addComponent(compartment);
         }
+        // Need to set compartment's components
+        for (RenderableCompartment compartment : compartments) {
+            for (Renderable r : (List<Renderable>)diagram.getComponents()) {
+                if (compartment.isAssignable(r)) {
+                    compartment.addComponent(r);
+                }
+            }
+        }
     }
 
     public void convertToRTPJFile(File cytoscapeJSFile, 
@@ -767,16 +778,15 @@ public class CytoscapJSToDiagramXMLConverter {
         manager.setActiveMySQLAdaptor(dba);
         manager.setActiveFileAdaptor(fileAdaptor);
 
-        List<GKInstance> toBeStored = new ArrayList<>();
-        toBeStored.add(diagram);
-        @SuppressWarnings("unchecked")
+//        List<GKInstance> toBeStored = new ArrayList<>();
+//        toBeStored.add(diagram);
         List<GKInstance> pathways = diagram.getAttributeValuesList(ReactomeJavaConstants.representedPathway);
-        if (pathways != null) {
-            for (GKInstance pathway : pathways) {
-                toBeStored.add(pathway);
-            }
-        }
-        SynchronizationManager.getManager().checkOut(toBeStored, null);
+//        if (pathways != null) {
+//            for (GKInstance pathway : pathways) {
+//                toBeStored.add(pathway);
+//            }
+//        }
+//        SynchronizationManager.getManager().checkOut(toBeStored, null);
         
         if (pathways != null) {
             EventCheckOutHandler handler = new EventCheckOutHandler();
@@ -793,8 +803,8 @@ public class CytoscapJSToDiagramXMLConverter {
         Long pathwayDbId = 9615710L;
         Long diagramDbId = 9631416L;
         
-        pathwayDbId = 9613829L; // Chaperone Mediated Autophagy
-        diagramDbId = 9626676L;
+//        pathwayDbId = 9613829L; // Chaperone Mediated Autophagy
+//        diagramDbId = 9626676L;
         
         MySQLAdaptor dba = new MySQLAdaptor("localhost", "test_graphdb_slice", "root", "macmysql01");
         String srcDir = "/Users/wug/Documents/web_curator_tool/diagram/cytoscape";

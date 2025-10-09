@@ -57,6 +57,10 @@ public class PathwayDiagramSlicingHelper {
     public void removeDoNotReleaseEvents(GKInstance diagramInstance,
                                          MySQLAdaptor dba) throws Exception {
         RenderablePathway diagram = diagramReader.openDiagram(diagramInstance);
+        if (diagram == null) {
+            logger.error("Cannot parse diagram. No XML string or empty string: " + diagramInstance);
+            return;
+        }
         removeDoNotReleaseEvents(diagram, diagramInstance, dba);
     }
     

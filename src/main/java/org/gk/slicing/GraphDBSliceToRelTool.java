@@ -238,12 +238,37 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         // Remove events that are not in the slice, which means they are not released.
         // Additional step to remove events that should not be released but in the diagrams for some reasons
         PathwayDiagramSlicingHelper diagramHelper = new PathwayDiagramSlicingHelper();
+        List<Long> toBeRemoved = new ArrayList<>();
         for (Long dbId : sliceMap.keySet()) {
             GKInstance inst = sliceMap.get(dbId);
             if (inst.getSchemClass().isa(ReactomeJavaConstants.PathwayDiagram)) {
+                String atXML = (String) inst.getAttributeValue(ReactomeJavaConstants.storedATXML);
+                if (atXML == null || atXML.length() == 0) {
+                    logger.error("No diagram XML for PathwayDiagram. This instance will not be in slice: " + inst);
+                    toBeRemoved.add(dbId);
+                    continue;
+                }
+                // Also check representedPathway
+                @SuppressWarnings("unchecked")
+                List<GKInstance> representedPathway = (List<GKInstance>) inst.getAttributeValuesList(ReactomeJavaConstants.representedPathway);
+                boolean kept = false;
+                if (representedPathway != null) {
+                    for (GKInstance p : representedPathway) {
+                        if (sliceMap.containsKey(p.getDBID())) {
+                            kept = true;
+                            break;
+                        }
+                    }
+                }
+                if (!kept) {
+                    logger.error("representedPathway is null or not in the slice. This instance will not be in slice: " + inst);
+                    toBeRemoved.add(dbId);
+                    continue;
+                }
                 diagramHelper.removeDoNotReleaseEvents(inst, targetDBA);
             }
         }
+        sliceMap.keySet().removeAll(toBeRemoved);
         logger.info("extractPathwayDiagrams(): " + sliceMap.size());
     }
 

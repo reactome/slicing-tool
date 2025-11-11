@@ -9,6 +9,7 @@ import java.util.Map;
 import org.gk.database.EventCheckOutHandler;
 import org.gk.model.GKInstance;
 import org.gk.model.ReactomeJavaConstants;
+import org.gk.persistence.DiagramGKBReader;
 import org.gk.persistence.DiagramGKBWriter;
 import org.gk.persistence.MySQLAdaptor;
 import org.gk.persistence.PersistenceManager;
@@ -111,10 +112,15 @@ public class CytoscapJSToDiagramXMLConverter {
 //        SynchronizationManager.getManager().checkOut(toBeStored, null);
         
         if (pathways != null) {
+            // To avoid overwritten
+            String diagramXML = (String) diagram.getAttributeValue(ReactomeJavaConstants.storedATXML);
             EventCheckOutHandler handler = new EventCheckOutHandler();
             for (GKInstance pathway : pathways) {
                 handler.checkOutEvent(pathway, fileAdaptor);
             }
+            diagram.setAttributeValue(ReactomeJavaConstants.storedATXML, diagramXML);
+            RenderablePathway rPathway = new DiagramGKBReader().openDiagram(diagramXML);
+            fileAdaptor.addDiagramForPathwayDiagram(diagram, rPathway);
         }
         
         fileAdaptor.save(outputRTPJFile.getAbsolutePath());
@@ -132,8 +138,8 @@ public class CytoscapJSToDiagramXMLConverter {
         String srcDir = "/Users/wug/Documents/web_curator_tool/diagram/cytoscape";
         String outputDir = "/Users/wug/temp";
         
-        File cytoscapeJSFile = new File(srcDir, pathwayDbId + ".json");
-        File outputXMLFile = new File(outputDir, pathwayDbId + ".rtpj");
+        File cytoscapeJSFile = new File(srcDir, diagramDbId + ".json");
+        File outputXMLFile = new File(outputDir, diagramDbId + ".rtpj");
         
         CytoscapJSToDiagramXMLConverter converter = new CytoscapJSToDiagramXMLConverter();
         converter.convertToRTPJFile(cytoscapeJSFile, pathwayDbId, diagramDbId, dba, outputXMLFile);

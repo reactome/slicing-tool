@@ -69,6 +69,8 @@ public class GraphToRelInstanceConvertManager {
             return ReactomeJavaConstants.deletedInstanceDB_ID;
         else if (attName.equals("replacementInstanceDbIds"))
             return "replacementInstanceDB_IDs";
+        else if (attName.equals("clazz"))
+            return "class"; // For _DeletedInstance
         else if ((schemaClassName.equals(ReactomeJavaConstants.Compartment) || 
                  schemaClassName.startsWith("GO_")) 
                 && attName.equals(ReactomeJavaConstants.identifier))
@@ -102,7 +104,7 @@ public class GraphToRelInstanceConvertManager {
             for (Map.Entry<String, Object> entry : simpleInstance.getAttributes().entrySet()) {
                 String attrName = entry.getKey();
                 Object attrValue = entry.getValue();
-                if (attrValue == null || attrName.equals("stId") || attrName.equals("modified"))
+                if (attrValue == null || attrName.equals("stId") || attrName.equals("modified") || attrName.equals("hasDiagram"))
                     continue;
                 // Need some conversion from the graph attribute name to the relational attribute name
                 attrName = getAtttributeName(attrName, gkInst.getSchemClass().getName());

@@ -952,7 +952,7 @@ public class SlicingEngine {
      * @throws Exception
      */
     protected void dumpInstances() throws Exception {
-        logger.info("dumpInstances()...");
+        logger.info("dumpInstances: " + sliceMap.size());
         long time1 = System.currentTimeMillis();
         MySQLAdaptor targetDBA = getTargetDBA();
         // Try to use transaction
@@ -960,9 +960,13 @@ public class SlicingEngine {
         if (isTnSupported)
             targetDBA.startTransaction();
         try {
+            int count = 0;
             for (Long dbId : sliceMap.keySet()) {
                 GKInstance instance = (GKInstance) sliceMap.get(dbId);
                 storeInstance(instance, targetDBA);
+                count++;
+                if (count % 100 == 0)
+                    logger.info("dumpInstances: " + count);
             }
             if (isTnSupported)
                 targetDBA.commit();

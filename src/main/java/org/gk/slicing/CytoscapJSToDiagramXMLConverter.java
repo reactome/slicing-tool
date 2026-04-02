@@ -129,7 +129,7 @@ public class CytoscapJSToDiagramXMLConverter {
     public static void main(String[] args) throws Exception {
         
         Long pathwayDbId = 9615710L;
-        Long diagramDbId = 9631416L;
+        Long diagramDbId = 9626676L;
         
 //        pathwayDbId = 9613829L; // Chaperone Mediated Autophagy
 //        diagramDbId = 9626676L;

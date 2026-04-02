@@ -34,10 +34,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @SuppressWarnings("unchecked")
 public class GraphDBInstanceManager {
     private static final Logger logger = LoggerFactory.getLogger(GraphDBInstanceManager.class);
-    
+
     // The following URLs should be externalized in a real application
-    private static final String HOST_URL = "http://localhost:9090/api/"; // Base URL for the curator-tool-ws API
-    private static final String AUTH_URL = HOST_URL + "authenticate"; // Endpoint to fetch JWT token
+    private static final String HOST_URL = "http://localhost:9191/api/"; // Base URL for the curator-tool-ws API
+    private static final String AUTH_URL = HOST_URL + "auth/login"; // Endpoint to fetch JWT token
     private static final String GET_INST_URL = HOST_URL + "curation/findByDbId/"; // Endpoint from testJSONDeserization
     private static final String EXIST_INST_URL = HOST_URL + "curation/existsByDbId/"; // Check if an instance exists by dbId
     private static final String UPDATE_INST_URL = HOST_URL + "curation/commit"; // Update an instance
@@ -71,7 +71,7 @@ public class GraphDBInstanceManager {
         }
         return instance;
     }
-    
+
     public void setTopLevelIDs(List<Long> topLevelIDs) {
         this.topLevelIDs = topLevelIDs;
     }
@@ -92,6 +92,7 @@ public class GraphDBInstanceManager {
         if (speciesIds == null || speciesIds.size() == 0)
             throw new IllegalStateException("Species IDs have not been set.");
         logger.info("Starting species extraction using GraphDBSlicingTool.");
+        int preSize = graphInstanceCache.size();
         for (Long dbId : speciesIds) {
             logger.info("Processing species ID: " + dbId);
             // Fetch the SimpleInstance from GraphDB
@@ -104,7 +105,8 @@ public class GraphDBInstanceManager {
             extractReferences(species);
             logger.info("Done: " + dbId);
         }
-        logger.info("Species extraction completed: " + graphInstanceCache.size() + " species extracted.");
+        int afterSize = graphInstanceCache.size();
+        logger.info("Species extraction completed: " + (afterSize - preSize) + " species-related instances extracted.");
     }
     
     public void extractInstances() {
@@ -295,8 +297,8 @@ public class GraphDBInstanceManager {
                 // Use pull out instances only
                 SimpleInstance inst = graphInstanceCache.get(dbId.longValue());
                 if (inst == null) {
-                    logger.warn(deleted + " has a replacement instance deleted. "
-                            + "But cannot find its replacement (dbId is collected recursively) in the current slice: " + dbId);
+                    logger.warn(deleted + " has a replacement instance set by its dbId. "
+                            + "But no instance with this dbId can be found in the slice: " + dbId);
                     continue;
                 }
                 if (!replacementInstanceDB_IDList.contains(dbId))
@@ -653,6 +655,6 @@ public class GraphDBInstanceManager {
             throw new RuntimeException("Error fetching JWT token from API", e);
         }
     }
-    
+
 }
 

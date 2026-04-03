@@ -4,5 +4,7 @@ This is the project that is used to slice release content from the curation data
 
 **TODO**: 
 
-- need to check replacementDB_IDs in _Deleted (Deleted) after conversting. This needs to create a new graph database. 
-- Need stableIds at the node level in case the node is shell by needed in the context (e.g. replacementInstnstance in Deleted)
+- need to check replacementDB_IDs in _Deleted (Deleted) after converting. This needs to create a new graph database. 
+- Need stableIds at the node level in case the node is shell in the context (e.g. replacementInstnstance in Deleted)
+
+

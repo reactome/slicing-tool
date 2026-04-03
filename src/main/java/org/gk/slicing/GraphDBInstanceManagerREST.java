@@ -1,6 +1,15 @@
 package org.gk.slicing;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
@@ -9,42 +18,34 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
 import org.gk.model.ReactomeJavaConstants;
-import org.reactome.curation.CuratorToolWsApplication;
-import org.reactome.curation.controller.CurationController;
 import org.reactome.curation.model.InstanceList;
 import org.reactome.curation.model.SimpleInstance;
-import org.reactome.curation.service.CurationService;
 import org.reactome.curation.user.model.User;
-import org.reactome.curation.user.service.UserService;
 import org.reactome.server.graph.domain.model.DatabaseObject;
 import org.reactome.server.graph.domain.model.Event;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.WebApplicationType;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.context.ConfigurableApplicationContext;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * This class is responsible for managing instances of GraphDB via the curator-tool-ws RESTful API.
  */
 @SuppressWarnings("unchecked")
-public class GraphDBInstanceManager {
-    private static final Logger logger = LoggerFactory.getLogger(GraphDBInstanceManager.class);
+public class GraphDBInstanceManagerREST {
+    private static final Logger logger = LoggerFactory.getLogger(GraphDBInstanceManagerREST.class);
 
-//    // The following URLs should be externalized in a real application
-//    private static final String HOST_URL = "http://localhost:9191/api/"; // Base URL for the curator-tool-ws API
-//    private static final String AUTH_URL = HOST_URL + "auth/login"; // Endpoint to fetch JWT token
-//    private static final String GET_INST_URL = HOST_URL + "curation/findByDbId/"; // Endpoint from testJSONDeserization
-//    private static final String EXIST_INST_URL = HOST_URL + "curation/existsByDbId/"; // Check if an instance exists by dbId
-//    private static final String UPDATE_INST_URL = HOST_URL + "curation/commit"; // Update an instance
-//    //@GetMapping("listInstances/{className}/{skip}/{limit}")
-//    private static final String LIST_INST_URL = HOST_URL+ "curation/listInstances/"; // List instances of a class
-
+    // The following URLs should be externalized in a real application
+    private static final String HOST_URL = "http://localhost:9191/api/"; // Base URL for the curator-tool-ws API
+    private static final String AUTH_URL = HOST_URL + "auth/login"; // Endpoint to fetch JWT token
+    private static final String GET_INST_URL = HOST_URL + "curation/findByDbId/"; // Endpoint from testJSONDeserization
+    private static final String EXIST_INST_URL = HOST_URL + "curation/existsByDbId/"; // Check if an instance exists by dbId
+    private static final String UPDATE_INST_URL = HOST_URL + "curation/commit"; // Update an instance
+    //@GetMapping("listInstances/{className}/{skip}/{limit}")
+    private static final String LIST_INST_URL = HOST_URL+ "curation/listInstances/"; // List instances of a class
     private static final int PAGE_SIZE = 1000; // Number of instances to fetch per page
-    private static GraphDBInstanceManager instance;
+    
+    private static GraphDBInstanceManagerREST instance;
     // Cache all loaded SimpleInstances
     private Map<Long, SimpleInstance> graphInstanceCache;
     private ObjectMapper objectMapper;
@@ -56,54 +57,17 @@ public class GraphDBInstanceManager {
     private List<Long> speciesIds;
     // Tracked references pulling
     private Set<Long> refsProcessedIds;
-    // Hooker to the graph database query using the controller in curator-tool-ws.
-    private CurationController controller;
-    private ConfigurableApplicationContext applicationContext;
 
-    public static void main(String[] args) {
-        GraphDBInstanceManager manager = GraphDBInstanceManager.getInstance();
-        try {
-            Long dbId = 9612973L;
-            SimpleInstance inst = manager.getSimpleInstanceById(dbId);
-            System.out.println("Instance with dbId " + dbId + ": " + inst);
-        } finally {
-            manager.shutdown();
-        }
-        System.exit(0);
-    }
-
-    private GraphDBInstanceManager() {
-        this.controller = initController();
-        if (this.controller == null)
-            throw new IllegalStateException("Cannot initialize CurationController from the application context.");
+    private GraphDBInstanceManagerREST() {
+        this.jwtToken = this.fetchJwtToken("test", "password");
         this.objectMapper = new ObjectMapper();
         this.graphInstanceCache = new HashMap<>();
         refsProcessedIds = new HashSet<>();
     }
 
-    private CurationController initController() {
-        try {
-            applicationContext = new SpringApplicationBuilder(CuratorToolWsApplication.class)
-                .web(WebApplicationType.SERVLET)
-                .properties("server.port=-1")  // disable HTTP server; keep full servlet context for correct AspectJ wiring
-                .run();
-            return applicationContext.getBean(CurationController.class);
-        }
-        catch (Exception e) {
-            logger.error("GraphDBInstanceManager.initController(): " + e.getMessage(), e);
-        }
-        return null;
-    }
-
-    private void shutdown() {
-        if (applicationContext != null && applicationContext.isActive()) {
-            applicationContext.close();
-        }
-    }
-
-    public static GraphDBInstanceManager getInstance() {
+    public static GraphDBInstanceManagerREST getInstance() {
         if (instance == null) {
-            instance = new GraphDBInstanceManager();
+            instance = new GraphDBInstanceManagerREST();
         }
         return instance;
     }
@@ -419,8 +383,25 @@ public class GraphDBInstanceManager {
     }
     
     protected InstanceList listInstances(String className, int skip, int limit) {
-        InstanceList instanceList = this.controller.listInstances(className, skip, limit, Optional.empty());
-        return instanceList;
+        String url = LIST_INST_URL + className + "/" + skip + "/" + limit;
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpGet request = new HttpGet(url);
+            request.setHeader("Accept", "application/json");
+            if (jwtToken != null) {
+                request.setHeader("Authorization", "Bearer " + jwtToken);
+            }
+            HttpResponse response = httpClient.execute(request);
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode != 200) {
+                throw new RuntimeException("Failed : HTTP error code : " + statusCode);
+            }
+            String json = EntityUtils.toString(response.getEntity());
+            InstanceList instanceList = objectMapper.readValue(json, InstanceList.class);
+            return instanceList;
+        } 
+        catch (Exception e) {
+            throw new RuntimeException("Error fetching instances of " + className + " from API", e);
+        }
     }
     
     private void extractEvents() {
@@ -580,18 +561,99 @@ public class GraphDBInstanceManager {
         }
         else throw new IllegalArgumentException("Instance with dbId " + dbId + " not found.");
         return simpleInstance;
+    }   
+    
+    public void setJwtToken(String jwtToken) {
+        this.jwtToken = jwtToken;
+    }
+    
+    public String getJwtToken() {
+        return jwtToken;
     }
     
     private boolean existsByDbId(Long dbId) {
-        return this.controller.existsByDbId(dbId);
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpGet request = new HttpGet(EXIST_INST_URL + dbId);
+            request.setHeader("Accept", "application/json");
+            if (jwtToken != null) {
+                request.setHeader("Authorization", "Bearer " + jwtToken);
+            }
+            HttpResponse response = httpClient.execute(request);
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode != 200) {
+                throw new RuntimeException("Failed : HTTP error code : " + statusCode);
+            }
+            Boolean exists = Boolean.valueOf(EntityUtils.toString(response.getEntity()));
+            return exists;
+        } 
+        catch (Exception e) {
+            throw new RuntimeException("Error checking existence of instance by dbId", e);
+        }
     }
 
     private SimpleInstance fetchSimpleInstanceFromAPI(Long dbId) {
-        return this.controller.findByDdIdInInstance(dbId);
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpGet request = new HttpGet(GET_INST_URL + dbId);
+            request.setHeader("Accept", "application/json");
+            if (jwtToken != null) {
+                request.setHeader("Authorization", "Bearer " + jwtToken);
+            }
+            HttpResponse response = httpClient.execute(request);
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode != 200) {
+                throw new RuntimeException("Failed : HTTP error code : " + statusCode);
+            }
+            String json = EntityUtils.toString(response.getEntity());
+            return objectMapper.readValue(json, SimpleInstance.class);
+        } 
+        catch (Exception e) {
+            throw new RuntimeException("Error fetching SimpleInstance from API", e);
+        }
     }
     
     private SimpleInstance updateInstanceViaAPI(SimpleInstance instance) {
-        return this.controller.commit(instance);
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpPost post = new HttpPost(UPDATE_INST_URL);
+            post.setHeader("Content-Type", "application/json");
+            if (jwtToken != null) {
+                post.setHeader("Authorization", "Bearer " + jwtToken);
+            }
+            String jsonObj = objectMapper.writeValueAsString(instance);
+            post.setEntity(new StringEntity(jsonObj));
+            HttpResponse response = httpClient.execute(post);
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode != 200) {
+                throw new RuntimeException("Failed : HTTP error code : " + statusCode);
+            }
+            String json = EntityUtils.toString(response.getEntity());
+            return objectMapper.readValue(json, SimpleInstance.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Error updating instance via API", e);
+        }
     }
+
+    private String fetchJwtToken(String username, String password) {
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpPost post = new HttpPost(AUTH_URL);
+            post.setHeader("Content-Type", "application/json");
+            ObjectMapper mapper = new ObjectMapper();
+            String jsonObj = mapper.writeValueAsString(new User(username, password));
+            post.setEntity(new StringEntity(jsonObj));
+            HttpResponse response = httpClient.execute(post);
+            int statusCode = response.getStatusLine().getStatusCode();
+            if (statusCode != 200) {
+                throw new RuntimeException("Failed : HTTP error code : " + statusCode);
+            }
+            String jwt = EntityUtils.toString(response.getEntity());
+            if (jwt.startsWith("\"") && jwt.endsWith("\"")) {
+                jwt = jwt.substring(1, jwt.length() - 1);
+            }
+            this.jwtToken = jwt;
+            return jwt;
+        } catch (Exception e) {
+            throw new RuntimeException("Error fetching JWT token from API", e);
+        }
+    }
+
 }
 

@@ -335,7 +335,7 @@ public class SlicingEngine {
      * out if a replacementInstance can be found based on denormalized replacementInstanceDB_IDs in the same _Deleted
      * instance. This is a recursive search since the replacementInstance for the deleted replacementInstance may be
      * deleted again :-). 
-     * @param deleted
+     * @param _deleteds deleted instance collection used for replacement resolution
      * @throws Exception
      */
     private void ensureReplacementInstances(Collection<GKInstance> _deleteds) throws Exception {
@@ -395,7 +395,7 @@ public class SlicingEngine {
     
     /**
      * Make sure the replacementDBIDs are not deleted. Otherwise, try to find their replacement DB_IDs recursively.
-     * @param replacementDBIDs
+     * @param dbId candidate replacement dbId to validate recursively
      */
     private void ensureReplacementDBID(Integer dbId,
                                        Map<Integer, List<Integer>> deletedDBID2ReplacementDBIDs,
@@ -965,7 +965,7 @@ public class SlicingEngine {
                 GKInstance instance = (GKInstance) sliceMap.get(dbId);
                 storeInstance(instance, targetDBA);
                 count++;
-                if (count % 100 == 0)
+                if (count % 1000 == 0)
                     logger.info("dumpInstances: " + count);
             }
             if (isTnSupported)
@@ -1058,7 +1058,7 @@ public class SlicingEngine {
             if (dbID == null) {
                 ResultSet rs = ps.getGeneratedKeys();
                 if (rs.next()) {
-                    dbID = new Long(rs.getLong(1));
+                    dbID = Long.valueOf(rs.getLong(1));
                     instance.setDBID(dbID);
                 }
                 else {
@@ -1272,7 +1272,7 @@ public class SlicingEngine {
             if (line.length() == 0)
                 break;
             tokens = line.split("\\s");
-            ids.add(new Long(tokens[0]));
+            ids.add(Long.valueOf(tokens[0]));
         }
         bufferedReader.close();
         return ids;
@@ -1631,7 +1631,7 @@ public class SlicingEngine {
             engine.setTargetDbHost(targetDbHost);
             engine.setTargetDbUser(targetDbUser);
             engine.setTargetDbPwd(targetDbPwd);
-            engine.setTargetDbPort(new Integer(targetDbPort));
+            engine.setTargetDbPort(Integer.parseInt(targetDbPort));
             engine.setProcessFileName(fileName);
             engine.setReleaseNumber(releaseNumber);
             engine.setReleaseDate(releaseDate);
@@ -1640,8 +1640,8 @@ public class SlicingEngine {
             engine.setLogFileName(logFileName);
             engine.needUpdateTrackers = needUpdateTrackers;
             engine.setPreviousSlice(previousSliceDBA);
-            engine.setReleasedInStableIdentifier = new Boolean(setReleasedInStableIdentifier);
-            engine.defaultPersonId = new Long(defaultPersonId);
+            engine.setReleasedInStableIdentifier = Boolean.parseBoolean(setReleasedInStableIdentifier);
+            engine.defaultPersonId = Long.valueOf(defaultPersonId);
             engine.slice();
             long time2 = System.currentTimeMillis();
             logger.info("Total time for slicing: " + (time2 - time1) / (1000 * 60.0d) + " minutes");

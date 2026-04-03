@@ -1,21 +1,11 @@
 package org.gk.slicing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.util.EntityUtils;
 import org.gk.model.ReactomeJavaConstants;
 import org.reactome.curation.CuratorToolWsApplication;
 import org.reactome.curation.controller.CurationController;
 import org.reactome.curation.model.InstanceList;
 import org.reactome.curation.model.SimpleInstance;
-import org.reactome.curation.service.CurationService;
-import org.reactome.curation.user.model.User;
-import org.reactome.curation.user.service.UserService;
 import org.reactome.server.graph.domain.model.DatabaseObject;
 import org.reactome.server.graph.domain.model.Event;
 import org.slf4j.Logger;

@@ -230,6 +230,7 @@
             <groupId>org.reactome</groupId>
             <artifactId>curator-tool-ws</artifactId>
             <version>0.0.1-SNAPSHOT</version>
+            <classifier>plain</classifier>
         </dependency>
 
 		<dependency>

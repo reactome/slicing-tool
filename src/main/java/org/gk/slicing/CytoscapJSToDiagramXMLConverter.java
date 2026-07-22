@@ -72,7 +72,7 @@ public class CytoscapJSToDiagramXMLConverter {
         GraphToRelInstanceConvertManager convertManager = GraphToRelInstanceConvertManager.getInstance();
         convertManager.setMySQLAdaptor(dba);
         GKInstance diagramInstance = convertManager.convertGraphToRelInstance(graphDiagramInst, 
-                graphDbInstanceManager.getExtractedInstances());
+                graphDbInstanceManager.getSliceInstances());
 
         String diagramXML = this.convert(cytoscapeJSFile, pathwayInstance, diagramInstance);
 //        System.out.println(diagramXML);

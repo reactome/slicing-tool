@@ -16,6 +16,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * This class is responsible for managing instances of GraphDB via the curator-tool-ws RESTful API.
@@ -35,8 +36,15 @@ public class GraphDBInstanceManager {
 
     private static final int PAGE_SIZE = 1000; // Number of instances to fetch per page
     private static GraphDBInstanceManager instance;
-    // Cache all loaded SimpleInstances
+    // Cache all loaded SimpleInstances.
     private Map<Long, SimpleInstance> graphInstanceCache;
+    // Instances in this map will be sliced into the slice database.
+    // There are two stages of pulling: 1). Events in the hierarchy tree and their reference
+    // 2). References of the events in the first stage.
+    // Maintain this map to avoid to slice everything in graphInstanceCcahe into the database.
+    // The graphInstanceCahce may have instances that should not be in the slice (e.g. event having
+    // _doRelease = false
+    private Map<Long, SimpleInstance> sliceInstanceCache;
     private ObjectMapper objectMapper;
     private String jwtToken;
     // Used to specify top-level instances for slicing
@@ -49,6 +57,9 @@ public class GraphDBInstanceManager {
     // Hooker to the graph database query using the controller in curator-tool-ws.
     private CurationController controller;
     private ConfigurableApplicationContext applicationContext;
+
+    // A list of attributes introduced by the production server that should not be considered
+    private Set<String> escapedAttributes = Stream.of("inferTo").collect(Collectors.toSet());
 
     public static void main(String[] args) {
         GraphDBInstanceManager manager = GraphDBInstanceManager.getInstance();
@@ -68,6 +79,7 @@ public class GraphDBInstanceManager {
             throw new IllegalStateException("Cannot initialize CurationController from the application context.");
         this.objectMapper = new ObjectMapper();
         this.graphInstanceCache = new HashMap<>();
+        this.sliceInstanceCache = new HashMap<>();
         refsProcessedIds = new HashSet<>();
     }
 
@@ -75,8 +87,11 @@ public class GraphDBInstanceManager {
         try {
             applicationContext = new SpringApplicationBuilder(CuratorToolWsApplication.class)
                 .web(WebApplicationType.SERVLET)
-                .properties("server.port=-1")  // disable HTTP server; keep full servlet context for correct AspectJ wiring
-                .run();
+                // Passed as a program argument (highest-priority property source) so it overrides
+                // the server.port=9090 hardcoded in application.properties. Using .properties(...)
+                // instead sets it as Spring Boot's lowest-priority "default property", which loses
+                // to application.properties and lets the embedded server really bind port 9090.
+                .run("--server.port=-1");
             return applicationContext.getBean(CurationController.class);
         }
         catch (Exception e) {
@@ -110,29 +125,28 @@ public class GraphDBInstanceManager {
      * Call this method to get all extracted instances after calling extractInstances().
      * @return
      */
-    public Map<Long, SimpleInstance> getExtractedInstances() {
-        return graphInstanceCache;
+    public Map<Long, SimpleInstance> getSliceInstances() {
+        return this.sliceInstanceCache;
     }
     
     private void extractSpecies() {
         if (speciesIds == null || speciesIds.size() == 0)
             throw new IllegalStateException("Species IDs have not been set.");
-        logger.info("Starting species extraction using GraphDBSlicingTool.");
-        int preSize = graphInstanceCache.size();
+        logger.info("Starting species extraction using GraphDBSlicingTool...");
+        logger.info("Total instances in sliceInstanceCache: " + this.sliceInstanceCache.size());
+        int preSize = sliceInstanceCache.size();
         for (Long dbId : speciesIds) {
             logger.info("Processing species ID: " + dbId);
             // Fetch the SimpleInstance from GraphDB
             SimpleInstance species = getSimpleInstanceById(dbId);
-            if (species == null) {
-                logger.warn("Species with dbId " + dbId + " not found.");
-                continue;
-            }
+            sliceInstanceCache.put(dbId, species);
             // We'd like to get all references for a species
             extractReferences(species);
             logger.info("Done: " + dbId);
         }
-        int afterSize = graphInstanceCache.size();
+        int afterSize = sliceInstanceCache.size();
         logger.info("Species extraction completed: " + (afterSize - preSize) + " species-related instances extracted.");
+        logger.info("Total instances in sliceInstanceCache: " + this.sliceInstanceCache.size());
     }
     
     public void extractInstances() {
@@ -146,9 +160,10 @@ public class GraphDBInstanceManager {
     
     private void extractPathwayDiagrams() {
         logger.info("Starting PathwayDiagram extraction...");
+        logger.info("Total instances in sliceInstanceCache: " + sliceInstanceCache.size());
         // We'd like to generate a set of pathway diagram display name so that we can quickly check if a PathwayDiagram
         // instance should be processed.
-        Set<String> diagramDisplayNames = graphInstanceCache.values().stream()
+        Set<String> diagramDisplayNames = sliceInstanceCache.values().stream()
                 .filter(inst -> inst.getSchemaClassName().equals(ReactomeJavaConstants.Pathway) ||
                                 inst.getSchemaClassName().equals("TopLevelPathway") ||
                                 inst.getSchemaClassName().equals(ReactomeJavaConstants.CellLineagePath))
@@ -180,16 +195,14 @@ public class GraphDBInstanceManager {
                 if (!isNeeded)
                     continue; // Skip it
                 SimpleInstance instance = getSimpleInstanceById(pd.getDbId());
-                if (instance == null) {
-                    logger.warn("PathwayDiagram instance with dbId " + pd.getDbId() + " not found.");
-                    continue; // Cannot find it!
-                }
+                sliceInstanceCache.put(pd.getDbId(), instance);
                 extractOneHopReferences(instance);
                 instanceCount++;
             }
             skip += PAGE_SIZE;
         }
         logger.info("PathwayDiagram extraction completed: " + instanceCount + " instances extracted.");
+        logger.info("Total instances in sliceInstanceCache: " + sliceInstanceCache.size());
     }
     
     
@@ -198,7 +211,7 @@ public class GraphDBInstanceManager {
      */
     protected void setReleasedInStableIdentifiers() {
         logger.info("Setting released=true for all StableIdentifier instances...");
-        for (SimpleInstance instance : graphInstanceCache.values()) {
+        for (SimpleInstance instance : sliceInstanceCache.values()) {
             if (!instance.getSchemaClassName().equals(ReactomeJavaConstants.StableIdentifier))
                 continue;
             // Maybe there is something wrong with the instance
@@ -224,6 +237,7 @@ public class GraphDBInstanceManager {
      */
     private void handleDeleted() {
         logger.info("Starting handling Deleted instances...");
+        logger.info("Total instances in sliceInstanceCache: " + this.sliceInstanceCache.size());
         // List all Deletion instances
         int skip = 0;
         // Peek and get the total count
@@ -239,10 +253,7 @@ public class GraphDBInstanceManager {
             }
             for (SimpleInstance del : deleted) {
                 SimpleInstance instance = getSimpleInstanceById(del.getDbId());
-                if (instance == null) {
-                    logger.warn("Deletion instance with dbId " + del.getDbId() + " not found.");
-                    continue; // Cannot find it!
-                }
+                sliceInstanceCache.put(instance.getDbId(), instance);
                 allDeleted.add(instance);
             }
             skip += PAGE_SIZE;
@@ -262,6 +273,7 @@ public class GraphDBInstanceManager {
         }
         logger.info("One-hop reference extraction for Deleted instances completed.");
         logger.info("Deletion handling completed. Total deletions processed: " + allDeleted.size());
+        logger.info("Total instances in sliceInstanceCache: " + this.sliceInstanceCache.size());
     }
     
     /**
@@ -301,7 +313,7 @@ public class GraphDBInstanceManager {
             }
             // To control the size of the reference graph, we will make sure referred replacementInstances have been loaded already.
             // Remove those not loaded already.
-            replacementInstancesList.removeIf(inst -> !graphInstanceCache.containsKey(inst.getDbId()));
+            replacementInstancesList.removeIf(inst -> !sliceInstanceCache.containsKey(inst.getDbId()));
             
             // In case a replacementInstance is deleted, we need to find another replacementInstance recursively.
             List<Integer> replacementInstanceDB_IDList = (List<Integer>) deleted.getAttributes().get("replacementInstanceDbIds");
@@ -321,7 +333,7 @@ public class GraphDBInstanceManager {
                 if (idSet.contains(dbId))
                     continue; // Good. It is still there!
                 // Use pull out instances only
-                SimpleInstance inst = graphInstanceCache.get(dbId.longValue());
+                SimpleInstance inst = sliceInstanceCache.get(dbId.longValue());
                 if (inst == null) {
                     logger.warn(deleted + " has a replacement instance set by its dbId. "
                             + "But no instance with this dbId can be found in the slice: " + dbId);
@@ -356,6 +368,7 @@ public class GraphDBInstanceManager {
     
     private void extractUpdateTracker() {
         logger.info("Starting updateTracker extraction...");
+        logger.info("Total instances in sliceInstanceCache: " + this.sliceInstanceCache.size());
         // List all UpdateTracker instances
         int skip = 0;
         // Peek and get the total count
@@ -379,22 +392,23 @@ public class GraphDBInstanceManager {
                 Long id = null;
                 if (idText.matches("\\d+")) {
                     id = Long.parseLong(idText);
-                    if (!graphInstanceCache.containsKey(id))
+                    if (!sliceInstanceCache.containsKey(id))
                         continue; // Don't need to process it
                 }
                 SimpleInstance instance = getSimpleInstanceById(id);
-                if (instance == null)
-                    continue; // No updatedInstance attribute
+                sliceInstanceCache.put(instance.getDbId(), instance);
                 extractReferences(instance);
                 instanceCount++;
             }
             skip += PAGE_SIZE;
         }
         logger.info("UpdateTracker extraction completed: " + instanceCount + " instances extracted.");
+        logger.info("Total instances in sliceInstanceCache: " + this.sliceInstanceCache.size());
     }
     
     private void extractReviewStatuses() {
         logger.info("Starting reviewStatus extraction...");
+        logger.info("Total instances in sliceInstanceCache: " + this.sliceInstanceCache.size());
         // List all ReviewStatus instances: Only 5 expected
         List<SimpleInstance> reviewStatuses = listInstances("ReviewStatus", 0, PAGE_SIZE).getInstances();
         if (reviewStatuses == null || reviewStatuses.size() == 0) {
@@ -403,9 +417,11 @@ public class GraphDBInstanceManager {
         }
         for (SimpleInstance rs : reviewStatuses) {
             SimpleInstance instance = getSimpleInstanceById(rs.getDbId());
+            sliceInstanceCache.put(rs.getDbId(), instance);
             extractReferences(instance);
         }
         logger.info("ReviewStatus extraction completed: " + reviewStatuses.size() + " instances extracted.");
+        logger.info("Total instances in sliceInstanceCache: " + this.sliceInstanceCache.size());
     }
     
     protected InstanceList listInstances(String className, int skip, int limit) {
@@ -423,41 +439,118 @@ public class GraphDBInstanceManager {
             extractHasEvent(dbId);
             logger.info("Done: " + dbId);
         }
-        logger.info("Event extraction completed: " + graphInstanceCache.size() + " events extracted.");
+        logger.info("Event extraction completed: " + sliceInstanceCache.size() + " events extracted.");
         // Remove non-released events from the cache
         logger.info("Removing non-released events from the cache.");
         removeNotReleasedEvents();
-        logger.info("Non-released events removed. Remaining events: " + graphInstanceCache.size());
+        logger.info("Non-released events removed. Remaining events: " + sliceInstanceCache.size());
+        // Need to go through the event reference graph to pull in all events referring by.
+        logger.info("Fetching all Events for reference graph closure...");
+        extractEventTypeReferences(sliceInstanceCache);
+        logger.info("Total instances after figuring out event references: " + sliceInstanceCache.size());
         // Now extract all references for all non-event instances
         logger.info("Starting reference extraction...");
-        Set<Long> eventIds = new HashSet<>(graphInstanceCache.keySet());
+        Set<Long> eventIds = new HashSet<>(sliceInstanceCache.keySet());
         int processedCount = 0;
         for (Long dbId : eventIds) {
 //            logger.info("Processing event ID for references: " + dbId);
-            SimpleInstance instance = graphInstanceCache.get(dbId);
+            SimpleInstance instance = sliceInstanceCache.get(dbId);
+            cleanUpEventAttributes(instance);
             extractReferences(instance);
             processedCount++;
             if (processedCount % 100 == 0) {
                 logger.info("Processed " + processedCount + " events for references.");
             }
         }
-        logger.info("Reference extraction completed.");
+        logger.info("Reference extraction completed. Total instances to be sliced: " + sliceInstanceCache.size());
     }
-    
-    
+
+    /**
+     * Remove attributes that should not be under consideration (e.g. inferTo, which is added later on)
+     * @param instance
+     */
+    private void cleanUpEventAttributes(SimpleInstance instance) {
+        Map<String, Object> attributes = instance.getAttributes();
+        if (attributes == null || attributes.size() == 0) {
+            return;
+        }
+        attributes.keySet().removeAll(escapedAttributes);
+    }
+
+    private void extractEventTypeReferences(Map<Long, SimpleInstance> eventMap) {
+        Set<SimpleInstance> current = new HashSet<>(eventMap.values());
+        Set<SimpleInstance> next = new HashSet<>();
+        while (!current.isEmpty()) {
+            for (SimpleInstance instance : current) {
+                if (instance.getAttributes() == null)
+                    continue;
+                // Just get rid of these attributes
+                instance.getAttributes().keySet().removeAll(escapedAttributes);
+                Set<String> toBeRemoved = new HashSet<>();
+                for (String attribute : instance.getAttributes().keySet()) {
+                    Object attValue = instance.getAttributes().get(attribute);
+                    if (attValue instanceof SimpleInstance) {
+                        SimpleInstance attInstance = (SimpleInstance) attValue;
+                        attInstance = getSimpleInstanceById(attInstance.getDbId());
+                        if (!isEvent(attInstance))
+                            continue;
+                        if (!isReleased(attInstance)) {
+                            toBeRemoved.add(attribute);
+                            continue; // Skip non-released events
+                        }
+                        addEventTypeReference(attInstance, eventMap, next);
+                    }
+                    else if (attValue instanceof List) {
+                        List<?> values = (List<?>) attValue;
+                        if (values.isEmpty() || !(values.get(0) instanceof SimpleInstance))
+                            continue; // Not a list of references
+                        for (Iterator<?> it = values.iterator(); it.hasNext(); ) {
+                            SimpleInstance attInstance = (SimpleInstance) it.next();
+                            attInstance = getSimpleInstanceById(attInstance.getDbId());
+                            if (!isEvent(attInstance))
+                                continue;
+                            if (!isReleased(attInstance)) {
+                                it.remove();
+                                continue;
+                            }
+                            addEventTypeReference(attInstance, eventMap, next);
+                        }
+                        if (values.isEmpty()) {
+                            toBeRemoved.add(attribute);
+                        }
+                    }
+                }
+                if (!toBeRemoved.isEmpty()) {
+                    instance.getAttributes().keySet().removeAll(toBeRemoved);
+                }
+            }
+            current = next;
+            next = new HashSet<>();
+        }
+    }
+
+    private void addEventTypeReference(SimpleInstance value,
+                                       Map<Long, SimpleInstance> eventMap,
+                                       Set<SimpleInstance> next) {
+        if (eventMap.containsKey(value.getDbId()))
+            return;
+        eventMap.put(value.getDbId(), value);
+        next.add(value);
+    }
+
+
     /**
      * Extract the event branch starting from the given top-level event.
      * Note: hasMember is not used in the data model any more.
      * @param dbId for the Event object.
      */
     private void extractHasEvent(Long dbId) {
-        if (graphInstanceCache.containsKey(dbId))
+        if (sliceInstanceCache.containsKey(dbId))
             return; // Already processed
         SimpleInstance event = getSimpleInstanceById(dbId);
-        if (event == null)
-            return;
         if (!isReleased(event))
             return; // Skip non-released events
+        sliceInstanceCache.put(dbId, event);
         List<SimpleInstance> hasEventList = (List<SimpleInstance>) event.getAttributes().get(ReactomeJavaConstants.hasEvent);
         if (hasEventList == null || hasEventList.size() == 0)
             return;
@@ -468,17 +561,17 @@ public class GraphDBInstanceManager {
     
     private void removeNotReleasedEvents() {
         Set<Long> toBeRemoved = new HashSet<>();
-        for (Long dbId : graphInstanceCache.keySet()) {
-            SimpleInstance instance = graphInstanceCache.get(dbId);
+        for (Long dbId : sliceInstanceCache.keySet()) {
+            SimpleInstance instance = sliceInstanceCache.get(dbId);
             // At this stage, only events should be in the cache
             if (!isReleased(instance)) {
                 toBeRemoved.add(dbId);
             }
         }
-        graphInstanceCache.keySet().removeAll(toBeRemoved);
+        sliceInstanceCache.keySet().removeAll(toBeRemoved);
         // Clean up hasEvent references
-        for (Long dbId : graphInstanceCache.keySet()) {
-            SimpleInstance instance = graphInstanceCache.get(dbId);
+        for (Long dbId : sliceInstanceCache.keySet()) {
+            SimpleInstance instance = sliceInstanceCache.get(dbId);
             List<SimpleInstance> hasEventList = (List<SimpleInstance>) instance.getAttributes().get(ReactomeJavaConstants.hasEvent);
             if (hasEventList == null || hasEventList.size() == 0)
                 continue;
@@ -496,6 +589,7 @@ public class GraphDBInstanceManager {
             return; // Only process non-event instances
         // Need to get all attributes
         instance = getSimpleInstanceById(instance.getDbId());
+        sliceInstanceCache.put(instance.getDbId(), instance);
         extractReferences(instance);
     }
 
@@ -534,7 +628,8 @@ public class GraphDBInstanceManager {
             if (attValue == null)
                 continue;
             if (attValue instanceof SimpleInstance) {
-                getSimpleInstanceById(((SimpleInstance) attValue).getDbId());
+                SimpleInstance inst = getSimpleInstanceById(((SimpleInstance) attValue).getDbId());
+                sliceInstanceCache.put(inst.getDbId(), inst);
                 continue;
             }
             if (attValue instanceof List) {
@@ -545,7 +640,8 @@ public class GraphDBInstanceManager {
                 if (!(attValues.get(0) instanceof SimpleInstance))
                     continue; // Not a list of references
                 for (Object obj : attValues) {
-                    getSimpleInstanceById(((SimpleInstance) obj).getDbId());
+                    SimpleInstance inst = getSimpleInstanceById(((SimpleInstance) obj).getDbId());
+                    sliceInstanceCache.put(inst.getDbId(), inst);
                 }
             }
         }

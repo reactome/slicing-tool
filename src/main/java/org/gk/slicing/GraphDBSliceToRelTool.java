@@ -2,10 +2,7 @@ package org.gk.slicing;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import org.gk.model.GKInstance;
 import org.gk.model.InstanceDisplayNameGenerator;
@@ -102,7 +99,6 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         if (!prepareTargetDatabase())
             throw new IllegalStateException("SlicingEngine.slice(): " +
                     "target database cannot be set up.");
-        //TODO: Make sure to validate the requirements: e.g. processFileName, speciesFileName, etc.
         GraphToRelInstanceConvertManager conversionManager = GraphToRelInstanceConvertManager.getInstance();
         conversionManager.setMySQLAdaptor(targetDBA);
 
@@ -110,7 +106,7 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         graphDBManager.setTopLevelIDs(getReleasedProcesses());
         graphDBManager.setSpeciesIds(readSpeciesIDs());
         graphDBManager.extractInstances();
-        Map<Long, SimpleInstance> extractedInsts = graphDBManager.getExtractedInstances();
+        Map<Long, SimpleInstance> extractedInsts = graphDBManager.getSliceInstances();
         logger.info("Total extracted instances: " + extractedInsts.size());
         logger.info("Converting to GKInstances...");
 
@@ -170,6 +166,20 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         //        updateReviewStatusToSource(eventsWithReviewStatusUpdated);
     }
 
+    private List<GKInstance> cleanUpRepresentedPathways(GKInstance pdInst) throws Exception {
+        List<GKInstance> representedPathways = pdInst.getAttributeValuesList(ReactomeJavaConstants.representedPathway);
+        if (representedPathways == null || representedPathways.isEmpty())
+            return Collections.emptyList();
+        for (Iterator<GKInstance> it = representedPathways.iterator(); it.hasNext(); ) {
+            GKInstance representedPathway = it.next();
+            if (sliceMap.containsKey(representedPathway.getDBID())) {
+                continue;
+            }
+            it.remove();
+        }
+        return representedPathways;
+    }
+
     /**
      * This overridden method is used to handle the context of PathwayDiagrams.
      */
@@ -177,18 +187,19 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
     protected void extractPathwayDiagrams() throws Exception {
         // Additional step to remove events that should not be released but in the diagrams for some reasons
         CytoscapJSToDiagramXMLConverter converter = new CytoscapJSToDiagramXMLConverter();
+        List<Long> toBeRemoved = new ArrayList<>();
         for (Long dbId : sliceMap.keySet()) {
             GKInstance inst = sliceMap.get(dbId);
             if (!inst.getSchemClass().isa(ReactomeJavaConstants.PathwayDiagram))
                 continue;
-            @SuppressWarnings("unchecked")
-            List<GKInstance> representedPathways = inst.getAttributeValuesList(ReactomeJavaConstants.representedPathway);
-            if (representedPathways == null || representedPathways.isEmpty())
-                continue;
-            if (!sliceMap.containsKey(representedPathways.get(0).getDBID())) {
+            List<GKInstance> representedPathways = cleanUpRepresentedPathways(inst);
+            if (representedPathways.isEmpty()) {
                 logger.info("Removing PathwayDiagram " + inst + " since its representedPathway is not in the slice.");
-                sliceMap.remove(dbId);
+                toBeRemoved.add(dbId);
+                continue; // No need to do anything for this pathway diagram. We will just remove it.
             }
+            // Just in case. Technically there is no need.
+            inst.setAttributeValue(ReactomeJavaConstants.representedPathway, representedPathways);
             GKInstance pathway = null;
             if (representedPathways.size() == 1)
                 pathway = representedPathways.get(0);
@@ -235,10 +246,13 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
                 }
             }
         }
+        logger.info("PathwayDiagrams having representedPathways all not released: " + toBeRemoved.size());
+        sliceMap.keySet().removeAll(toBeRemoved);
         // Remove events that are not in the slice, which means they are not released.
         // Additional step to remove events that should not be released but in the diagrams for some reasons
+        // Also remove pathway diagrams having nothing drawn: This should not happen
         PathwayDiagramSlicingHelper diagramHelper = new PathwayDiagramSlicingHelper();
-        List<Long> toBeRemoved = new ArrayList<>();
+        toBeRemoved.clear();
         for (Long dbId : sliceMap.keySet()) {
             GKInstance inst = sliceMap.get(dbId);
             if (inst.getSchemClass().isa(ReactomeJavaConstants.PathwayDiagram)) {
@@ -248,28 +262,12 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
                     toBeRemoved.add(dbId);
                     continue;
                 }
-                // Also check representedPathway
-                @SuppressWarnings("unchecked")
-                List<GKInstance> representedPathway = (List<GKInstance>) inst.getAttributeValuesList(ReactomeJavaConstants.representedPathway);
-                boolean kept = false;
-                if (representedPathway != null) {
-                    for (GKInstance p : representedPathway) {
-                        if (sliceMap.containsKey(p.getDBID())) {
-                            kept = true;
-                            break;
-                        }
-                    }
-                }
-                if (!kept) {
-                    logger.error("representedPathway is null or not in the slice. This instance will not be in slice: " + inst);
-                    toBeRemoved.add(dbId);
-                    continue;
-                }
                 diagramHelper.removeDoNotReleaseEvents(inst, targetDBA);
             }
         }
+        logger.info("Empty PathwayDiagrams without text: " + toBeRemoved.size());
         sliceMap.keySet().removeAll(toBeRemoved);
-        logger.info("extractPathwayDiagrams(): " + sliceMap.size());
+        logger.info("Total extracted instances after extractPathwayDiagrams(): " + sliceMap.size());
     }
 
     private void setStableIdReleased() throws Exception {

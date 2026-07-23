@@ -59,7 +59,7 @@ public class GraphDBInstanceManager {
     private ConfigurableApplicationContext applicationContext;
 
     // A list of attributes introduced by the production server that should not be considered
-    private Set<String> escapedAttributes = Stream.of("inferTo").collect(Collectors.toSet());
+    private Set<String> escapedAttributes = Stream.of("inferredTo").collect(Collectors.toSet());
 
     public static void main(String[] args) {
         GraphDBInstanceManager manager = GraphDBInstanceManager.getInstance();
@@ -161,14 +161,6 @@ public class GraphDBInstanceManager {
     private void extractPathwayDiagrams() {
         logger.info("Starting PathwayDiagram extraction...");
         logger.info("Total instances in sliceInstanceCache: " + sliceInstanceCache.size());
-        // We'd like to generate a set of pathway diagram display name so that we can quickly check if a PathwayDiagram
-        // instance should be processed.
-        Set<String> diagramDisplayNames = sliceInstanceCache.values().stream()
-                .filter(inst -> inst.getSchemaClassName().equals(ReactomeJavaConstants.Pathway) ||
-                                inst.getSchemaClassName().equals("TopLevelPathway") ||
-                                inst.getSchemaClassName().equals(ReactomeJavaConstants.CellLineagePath))
-                .map(inst -> "Diagram of " + inst.getDisplayName())
-                .collect(Collectors.toSet());
         // List all PathwayDiagram instances
         int skip = 0;
         // Peek and get the total count
@@ -183,18 +175,10 @@ public class GraphDBInstanceManager {
                 break;
             }
             for (SimpleInstance pd : diagrams) {
-                String displayName = pd.getDisplayName();
-                boolean isNeeded = false;
-                for (String name : diagramDisplayNames) {
-                    // The diagram may be used for disease pathway and has longer name
-                    if (displayName != null && displayName.contains(name)) {
-                        isNeeded = true;
-                        break;
-                    }
-                }
-                if (!isNeeded)
-                    continue; // Skip it
                 SimpleInstance instance = getSimpleInstanceById(pd.getDbId());
+                cleanUpRepresentedPathways(instance);
+                if (!isPathwayDiagramNeeded(instance))
+                    continue;
                 sliceInstanceCache.put(pd.getDbId(), instance);
                 extractOneHopReferences(instance);
                 instanceCount++;
@@ -204,7 +188,26 @@ public class GraphDBInstanceManager {
         logger.info("PathwayDiagram extraction completed: " + instanceCount + " instances extracted.");
         logger.info("Total instances in sliceInstanceCache: " + sliceInstanceCache.size());
     }
-    
+
+    private void cleanUpRepresentedPathways(SimpleInstance pdInstance) {
+        List<SimpleInstance> pathwayList = (List<SimpleInstance>) pdInstance.getAttributes().get(ReactomeJavaConstants.representedPathway);
+        if (pathwayList == null || pathwayList.isEmpty())
+            return;
+        for (Iterator<SimpleInstance> it = pathwayList.iterator(); it.hasNext(); ) {
+            SimpleInstance pathwayInstance = it.next();
+            if (sliceInstanceCache.containsKey(pathwayInstance.getDbId()))
+                continue;
+            it.remove(); // Remove it
+        }
+        // There is no need to reset the pathwayList.
+    }
+
+    private boolean isPathwayDiagramNeeded(SimpleInstance pdInstance) {
+        List<SimpleInstance> pathwayList = (List<SimpleInstance>) pdInstance.getAttributes().get(ReactomeJavaConstants.representedPathway);
+        if (pathwayList == null || pathwayList.isEmpty())
+            return false;
+        return true; // Since we have cleaned up representedPathway. All values should be good if any.
+    }
     
     /**
      * Set released as true for all StableIdentifier instances pulled out from the graph database.
@@ -395,7 +398,7 @@ public class GraphDBInstanceManager {
                     if (!sliceInstanceCache.containsKey(id))
                         continue; // Don't need to process it
                 }
-                SimpleInstance instance = getSimpleInstanceById(id);
+                SimpleInstance instance = getSimpleInstanceById(ut.getDbId());
                 sliceInstanceCache.put(instance.getDbId(), instance);
                 extractReferences(instance);
                 instanceCount++;
@@ -444,10 +447,12 @@ public class GraphDBInstanceManager {
         logger.info("Removing non-released events from the cache.");
         removeNotReleasedEvents();
         logger.info("Non-released events removed. Remaining events: " + sliceInstanceCache.size());
+//        checkSpecies(186860L);
         // Need to go through the event reference graph to pull in all events referring by.
         logger.info("Fetching all Events for reference graph closure...");
         extractEventTypeReferences(sliceInstanceCache);
         logger.info("Total instances after figuring out event references: " + sliceInstanceCache.size());
+//        checkSpecies(186860L);
         // Now extract all references for all non-event instances
         logger.info("Starting reference extraction...");
         Set<Long> eventIds = new HashSet<>(sliceInstanceCache.keySet());
@@ -455,26 +460,61 @@ public class GraphDBInstanceManager {
         for (Long dbId : eventIds) {
 //            logger.info("Processing event ID for references: " + dbId);
             SimpleInstance instance = sliceInstanceCache.get(dbId);
-            cleanUpEventAttributes(instance);
             extractReferences(instance);
             processedCount++;
             if (processedCount % 100 == 0) {
                 logger.info("Processed " + processedCount + " events for references.");
             }
         }
-        logger.info("Reference extraction completed. Total instances to be sliced: " + sliceInstanceCache.size());
+        logger.info("Reference extraction completed. Total instances in sliceInstanceCahce: " + sliceInstanceCache.size());
+        // Remove non-released events from attributes
+        logger.info("Removing non-released events from attributes.");
+        removeNoReleasedEventsInAttributes();
+        logger.info("Total instances in sliceInstanceCache: " + sliceInstanceCache.size());
+//        checkSpecies(186860L);
     }
 
-    /**
-     * Remove attributes that should not be under consideration (e.g. inferTo, which is added later on)
-     * @param instance
-     */
-    private void cleanUpEventAttributes(SimpleInstance instance) {
-        Map<String, Object> attributes = instance.getAttributes();
-        if (attributes == null || attributes.size() == 0) {
-            return;
+    void checkSpecies(Long speciesId) {
+        for (Long dbId : sliceInstanceCache.keySet()) {
+            SimpleInstance instance = sliceInstanceCache.get(dbId);
+            List<SimpleInstance> species = instance.getAttributes().get(ReactomeJavaConstants.species) instanceof List ? (List<SimpleInstance>) instance.getAttributes().get(ReactomeJavaConstants.species) : null;
+            if (species == null || species.size() == 0) {
+                continue;
+            }
+            for (SimpleInstance speciesInstance : species) {
+                if (speciesInstance.getDbId().equals(speciesId)) {
+                    System.out.println("Found species: " + speciesInstance.getDbId());
+                }
+            }
         }
-        attributes.keySet().removeAll(escapedAttributes);
+    }
+
+    private void removeNoReleasedEventsInAttributes() {
+        for (Long dbId: sliceInstanceCache.keySet()) {
+            SimpleInstance instance = sliceInstanceCache.get(dbId);
+            Map<String, Object> attributes = instance.getAttributes();
+            if (attributes == null || attributes.isEmpty()) {
+                logger.warn("No attributes found for instance: " + dbId);
+            }
+            for (Iterator<String> it = attributes.keySet().iterator(); it.hasNext(); ) {
+                String key = it.next();
+                Object value = attributes.get(key);
+                if (value instanceof SimpleInstance) {
+                    SimpleInstance refInstance = (SimpleInstance) value;
+                    // Here we should not check if it is released based on isReleased method since
+                    // the values may be provided as shell instances
+                    if (isEvent(refInstance) && !sliceInstanceCache.containsKey(refInstance.getDbId())) {
+                        logger.info("Removing non-released reference: " + refInstance + " from instance: " + dbId + " in " + key);
+                        it.remove();
+                    }
+                } else if (value instanceof List) {
+                    List<?> list = (List<?>) value;
+                    list.removeIf(item -> item instanceof SimpleInstance &&
+                            isEvent((SimpleInstance) item) &&
+                            !sliceInstanceCache.containsKey(((SimpleInstance) item).getDbId())); // Not in the event map so it is not released.
+                }
+            }
+        }
     }
 
     private void extractEventTypeReferences(Map<Long, SimpleInstance> eventMap) {
@@ -484,8 +524,6 @@ public class GraphDBInstanceManager {
             for (SimpleInstance instance : current) {
                 if (instance.getAttributes() == null)
                     continue;
-                // Just get rid of these attributes
-                instance.getAttributes().keySet().removeAll(escapedAttributes);
                 Set<String> toBeRemoved = new HashSet<>();
                 for (String attribute : instance.getAttributes().keySet()) {
                     Object attValue = instance.getAttributes().get(attribute);
@@ -534,6 +572,14 @@ public class GraphDBInstanceManager {
                                        Set<SimpleInstance> next) {
         if (eventMap.containsKey(value.getDbId()))
             return;
+//        List<SimpleInstance> species = (List<SimpleInstance>) value.getAttributes().get(ReactomeJavaConstants.species);
+//        if (species != null && !species.isEmpty()) {
+//            for (SimpleInstance speciesInstance : species) {
+//                if (speciesInstance.getDbId().equals(186860L)) {
+//                    System.out.println("Found species: " + speciesInstance.getDbId());
+//                }
+//            }
+//        }
         eventMap.put(value.getDbId(), value);
         next.add(value);
     }
@@ -580,6 +626,8 @@ public class GraphDBInstanceManager {
     }
     
     private boolean isReleased(SimpleInstance instance) {
+        if (instance.getAttributes() == null || instance.getAttributes().size() == 0)
+            return false; // Must not be set
         Boolean doRelease = (Boolean) instance.getAttributes().get("doRelease");
         return (doRelease != null && doRelease);
     }
@@ -662,6 +710,10 @@ public class GraphDBInstanceManager {
         // Fetch from RESTful API (pseudo-code, replace with actual API call)
         SimpleInstance simpleInstance = fetchSimpleInstanceFromAPI(dbId);
         if (simpleInstance != null) {
+            // Clean up the instance at the top
+            if (simpleInstance.getAttributes() != null) {
+                simpleInstance.getAttributes().keySet().removeAll(escapedAttributes);
+            }
             graphInstanceCache.put(dbId, simpleInstance);
         }
         else throw new IllegalArgumentException("Instance with dbId " + dbId + " not found.");

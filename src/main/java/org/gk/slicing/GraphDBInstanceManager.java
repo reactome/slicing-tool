@@ -59,7 +59,10 @@ public class GraphDBInstanceManager {
     private ConfigurableApplicationContext applicationContext;
 
     // A list of attributes introduced by the production server that should not be considered
-    private Set<String> escapedAttributes = Stream.of("inferredTo").collect(Collectors.toSet());
+    // Block orthologousEvent itself will not really block the value at the data model level at the graph database since the
+    // actual value is pulled from inferredTo edges, which are created based on inferredFrom. InferredFrom is sliced into the
+    // slice database.
+    private Set<String> escapedAttributes = Stream.of("inferredTo", "orthologousEvent").collect(Collectors.toSet());
 
     public static void main(String[] args) {
         GraphDBInstanceManager manager = GraphDBInstanceManager.getInstance();

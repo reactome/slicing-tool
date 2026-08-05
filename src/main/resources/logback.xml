@@ -30,6 +30,9 @@
     <logger name="org.neo4j" level="ERROR" /> <!-- Remove neo4j info logging. It prints user credentials -->
     <logger name="org.springframework" level="ERROR" />
     <logger name="org.apache" level="ERROR" />
+    <!-- Reaction-image warm-up failures are expected here (ReactomeGraphCore isn't initialised
+         in slicing-tool) and are non-fatal by design in curator-tool-ws; hide the WARN noise. -->
+    <logger name="org.reactome.curation.service.ReactionImageRendererService" level="ERROR" />
 
     <logger name="deng" level="DEBUG"/>
 

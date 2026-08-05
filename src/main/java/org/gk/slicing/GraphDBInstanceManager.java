@@ -8,6 +8,7 @@ import org.reactome.curation.model.InstanceList;
 import org.reactome.curation.model.SimpleInstance;
 import org.reactome.server.graph.domain.model.DatabaseObject;
 import org.reactome.server.graph.domain.model.Event;
+import org.reactome.server.graph.domain.model.Publication;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.WebApplicationType;
@@ -159,6 +160,7 @@ public class GraphDBInstanceManager {
         extractUpdateTracker();
         extractPathwayDiagrams();
         handleDeleted();
+        convertAuthorNamesToAuthors();
     }
     
     private void extractPathwayDiagrams() {
@@ -281,7 +283,122 @@ public class GraphDBInstanceManager {
         logger.info("Deletion handling completed. Total deletions processed: " + allDeleted.size());
         logger.info("Total instances in sliceInstanceCache: " + this.sliceInstanceCache.size());
     }
-    
+
+    /**
+     * As of the July 31, 2026 data model change, a Publication may record its authors as a list of
+     * plain-text names in the authorName attribute instead of Person instances in the author attribute
+     * (see LiteratureReferenceAttributeAutoFiller in curator-tool-ws). The relational data model still
+     * requires author to be populated with Person instances, so this method converts each authorName
+     * string back into a Person instance, reusing an already extracted Person instance when one with a
+     * matching name is already in the slice.
+     */
+    private void convertAuthorNamesToAuthors() {
+        logger.info("Starting converting Publication authorName into author Person instances...");
+        logger.info("Total instances in sliceInstanceCache: " + this.sliceInstanceCache.size());
+        // Index all extracted Person instances by name so they can be reused instead of creating duplicates.
+        Map<String, SimpleInstance> nameToPerson = new HashMap<>();
+        long maxDbId = 0L;
+        for (SimpleInstance instance : sliceInstanceCache.values()) {
+            if (instance.getDbId() != null && instance.getDbId() > maxDbId)
+                maxDbId = instance.getDbId();
+            if (!ReactomeJavaConstants.Person.equals(instance.getSchemaClassName()))
+                continue;
+            String key = generatePersonNameKey(instance);
+            if (key != null)
+                nameToPerson.put(key, instance);
+        }
+        int convertedCount = 0;
+        // Copy values since new Person instances will be added to sliceInstanceCache during the loop.
+        // Need to have a new ArrayList to avoid ConcurrentModificationException since we may add new
+        // instances to this cache.
+        for (SimpleInstance instance : new ArrayList<>(sliceInstanceCache.values())) {
+            if (!isPublication(instance) || instance.getAttributes() == null)
+                continue;
+            List<SimpleInstance> authors = (List<SimpleInstance>) instance.getAttributes().get(ReactomeJavaConstants.author);
+            if (authors != null && authors.size() > 0) {
+                continue; // Nothing to process
+            }
+            List<String> authorNames = (List<String>) instance.getAttributes().get("authorName");
+            if (authorNames == null || authorNames.isEmpty())
+                continue; // Cannot do anything
+            // Try to get or create Person instances
+            authors = new ArrayList<>(authorNames.size());
+            for (String authorName : authorNames) {
+                SimpleInstance person = nameToPerson.get(authorName);
+                if (person == null) {
+                    maxDbId++;
+                    person = createPersonFromAuthorName(authorName, maxDbId);
+                    nameToPerson.put(authorName, person);
+                    sliceInstanceCache.put(person.getDbId(), person);
+                }
+                authors.add(person);
+            }
+            instance.getAttributes().put(ReactomeJavaConstants.author, authors);
+            convertedCount++;
+        }
+        logger.info("Converted authorName to author for " + convertedCount + " Publication instances.");
+        logger.info("Total instances in sliceInstanceCache: " + this.sliceInstanceCache.size());
+    }
+
+    /**
+     * Format a Person's name the same way the curator tool generates its display name:
+     * "Surname, Firstname", falling back to "Surname, Initial", or just "Surname".
+     */
+    private String generatePersonNameKey(SimpleInstance person) {
+        Map<String, Object> attributes = person.getAttributes();
+        String surname = attributes == null ? null : (String) attributes.get(ReactomeJavaConstants.surname);
+        if (surname == null || surname.trim().length() == 0)
+            return person.getDisplayName(); // Fall back to the pre-computed display name for a shell instance.
+        String given = (String) attributes.get(ReactomeJavaConstants.firstname);
+        if (given == null || given.trim().length() == 0)
+            given = (String) attributes.get(ReactomeJavaConstants.initial);
+        if (given == null || given.trim().length() == 0)
+            return surname.trim();
+        // Following PubMed author format: e.g. Wang C,Weisman LS
+        return surname.trim() + " " + given.trim();
+    }
+
+    /**
+     * Create a new Person SimpleInstance from an authorName string formatted as "Surname, Firstname",
+     * "Surname, Initial", or plain "Surname".
+     */
+    private SimpleInstance createPersonFromAuthorName(String authorName, long dbId) {
+        SimpleInstance person = new SimpleInstance();
+        person.setDbId(dbId);
+        person.setSchemaClassName(ReactomeJavaConstants.Person);
+        person.setDisplayName(authorName);
+        Map<String, Object> attributes = new HashMap<>();
+        // Split on whichever comes first, a comma or a space, e.g. "Wang, Chen", "Wang,Chen", "Wang Chen".
+        int commaIndex = authorName.indexOf(',');
+        int spaceIndex = authorName.indexOf(' ');
+        int separatorIndex = commaIndex < 0 ? spaceIndex : spaceIndex < 0 ? commaIndex : Math.min(commaIndex, spaceIndex);
+        String surname = (separatorIndex < 0 ? authorName : authorName.substring(0, separatorIndex)).trim();
+        String given = separatorIndex < 0 ? null : authorName.substring(separatorIndex + 1).trim();
+        attributes.put(ReactomeJavaConstants.surname, surname);
+        if (given != null && given.length() > 0) {
+            String initial = given.replaceAll("[.\\s]", "");
+            // Treat an all upper-case given name as initials (e.g. "AN"); otherwise it is a firstname
+            // (which may include a middle name), from which initials can still be derived.
+            if (initial.length() > 0 && initial.length() <= 4 && initial.equals(initial.toUpperCase())) {
+                attributes.put(ReactomeJavaConstants.initial, initial);
+            } else {
+                attributes.put(ReactomeJavaConstants.firstname, given);
+                attributes.put(ReactomeJavaConstants.initial, generateInitialFromFirstName(given));
+            }
+        }
+        person.setAttributes(attributes);
+        return person;
+    }
+
+    private String generateInitialFromFirstName(String firstName) {
+        StringBuilder initial = new StringBuilder();
+        for (String part : firstName.split("\\s+")) {
+            if (part.length() > 0)
+                initial.append(Character.toUpperCase(part.charAt(0)));
+        }
+        return initial.toString();
+    }
+
     /**
      * It is possible a replacementInstance may be deleted in an _Deleted instance. This method is used to figure
      * out if a replacementInstance can be found based on denormalized replacementInstanceDB_IDs in the same _Deleted
@@ -703,6 +820,17 @@ public class GraphDBInstanceManager {
         if (cls == null)
             return false;
         return (Event.class.isAssignableFrom(cls));
+    }
+
+    /**
+     * Publication is an abstract schema class (e.g. LiteratureReference, Book are concrete subclasses),
+     * so schemaClassName will never literally be "Publication" and must be checked via the class hierarchy.
+     */
+    private boolean isPublication(SimpleInstance instance) {
+        Class<? extends DatabaseObject> cls = instance.getGraphModelClass();
+        if (cls == null)
+            return false;
+        return (Publication.class.isAssignableFrom(cls));
     }
     
     public SimpleInstance getSimpleInstanceById(Long dbId) {

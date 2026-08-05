@@ -104,7 +104,11 @@ public class GraphToRelInstanceConvertManager {
             for (Map.Entry<String, Object> entry : simpleInstance.getAttributes().entrySet()) {
                 String attrName = entry.getKey();
                 Object attrValue = entry.getValue();
-                if (attrValue == null || attrName.equals("stId") || attrName.equals("modified") || attrName.equals("hasDiagram"))
+                if (attrValue == null ||
+                        attrName.equals("stId") ||
+                        attrName.equals("modified") ||
+                        attrName.equals("hasDiagram") ||
+                        attrName.equals("authorName")) // For Publication's authorName in the GraphDB
                     continue;
                 // Need some conversion from the graph attribute name to the relational attribute name
                 attrName = getAtttributeName(attrName, gkInst.getSchemClass().getName());

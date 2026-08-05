@@ -387,7 +387,34 @@ public class GraphDBInstanceManager {
             }
         }
         person.setAttributes(attributes);
+        // Reset the display name to match the curator tool's convention for Person instances.
+        person.setDisplayName(generatePersonDisplayName(attributes));
         return person;
+    }
+
+    /**
+     * Port of org.gk.model.InstanceDisplayNameGenerator's Person display name logic:
+     * "Surname, Firstname", falling back to "Surname, Initial", or "Surname"/"Unknown".
+     */
+    private String generatePersonDisplayName(Map<String, Object> attributes) {
+        StringBuilder buffer = new StringBuilder();
+        String surname = (String) attributes.get(ReactomeJavaConstants.surname);
+        if (surname == null || surname.length() == 0)
+            buffer.append("Unknown");
+        else
+            buffer.append(surname);
+        String firstname = (String) attributes.get(ReactomeJavaConstants.firstname);
+        if (firstname != null && firstname.length() > 0) {
+            buffer.append(", ");
+            buffer.append(firstname);
+        } else {
+            String initial = (String) attributes.get(ReactomeJavaConstants.initial);
+            if (initial != null && initial.length() > 0) {
+                buffer.append(", ");
+                buffer.append(initial);
+            }
+        }
+        return buffer.toString();
     }
 
     private String generateInitialFromFirstName(String firstName) {

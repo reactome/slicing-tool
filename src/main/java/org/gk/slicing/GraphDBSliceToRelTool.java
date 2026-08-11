@@ -58,13 +58,13 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
     protected List<Long> getReleasedProcesses() throws Exception {
         if (topLevelIDs != null)
             return topLevelIDs;
-        topLevelIDs = new ArrayList<>();
         logger.info("Reading top-level process IDs from file: " + processFileName);
         InputStream is = getClass().getClassLoader().getResourceAsStream(processFileName);
         if (is == null) {
             throw new IllegalArgumentException("Resource not found: " + processFileName);
         }
-        return readDbIds(is);
+        this.topLevelIDs = readDbIds(is);
+        return this.topLevelIDs;
     }
 
     private List<Long> readDbIds(InputStream is) throws IOException {
@@ -84,14 +84,14 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
 
     private List<Long> readSpeciesIDs() throws Exception {
         if (speciesIDs != null)
-            return null;
-        speciesIDs = new ArrayList<>();
+            return this.speciesIDs;
         logger.info("Reading species IDs from file: " + speciesFileName);
         InputStream is = getClass().getClassLoader().getResourceAsStream(speciesFileName);
         if (is == null) {
             throw new IllegalArgumentException("Resource not found: " + speciesFileName);
         }
-        return readDbIds(is);
+        this.speciesIDs = readDbIds(is);
+        return this.speciesIDs;
     }
 
     @Override

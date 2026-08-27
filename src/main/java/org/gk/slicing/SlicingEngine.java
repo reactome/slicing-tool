@@ -482,6 +482,7 @@ public class SlicingEngine {
     // itself needs no adaptation for a graph-database-sourced slice: it only reads/writes the "figure"
     // attribute on Pathway instances already in sliceMap via the standard GKSchema attribute API.
     protected void cleanUpPathwayFigures() throws Exception {
+        logger.info("Cleaning up pathway figures");
         for (Long dbId : sliceMap.keySet()) {
             GKInstance instance = sliceMap.get(dbId);
             // Work with pathways only
@@ -498,6 +499,7 @@ public class SlicingEngine {
             instance.setAttributeValue(ReactomeJavaConstants.figure, copy);
             logger.info(instance + ": Only the first Figure value is kept.");
         }
+        logger.info("Cleaning up pathway figures done");
     }
 
     /**

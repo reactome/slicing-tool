@@ -11,10 +11,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.apache.log4j.Logger;
 import org.gk.model.GKInstance;
 import org.gk.model.ReactomeJavaConstants;
 import org.gk.persistence.MySQLAdaptor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class is used to handle the star system during the slicing. The major function of this
@@ -25,7 +26,7 @@ import org.gk.persistence.MySQLAdaptor;
  */
 @SuppressWarnings("unchecked")
 public class StarSystemHelper {
-    private final Logger logger = Logger.getLogger(StarSystemHelper.class);
+    private final Logger logger = LoggerFactory.getLogger(StarSystemHelper.class);
 
     public StarSystemHelper() {
     }

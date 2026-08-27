@@ -478,7 +478,10 @@ public class SlicingEngine {
      * a pathway instance (https://reactome.atlassian.net/browse/DEV-1810).
      * @throws Exception
      */
-    private void cleanUpPathwayFigures() throws Exception {
+    // Made protected (instead of private) so that GraphDBSliceToRelTool can also call this. The method
+    // itself needs no adaptation for a graph-database-sourced slice: it only reads/writes the "figure"
+    // attribute on Pathway instances already in sliceMap via the standard GKSchema attribute API.
+    protected void cleanUpPathwayFigures() throws Exception {
         for (Long dbId : sliceMap.keySet()) {
             GKInstance instance = sliceMap.get(dbId);
             // Work with pathways only

@@ -152,7 +152,7 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         // hasEvent hasn't structurally changed; hasEvent is already fully populated on every Pathway in
         // sliceMap by this point, so no source database or graph API call is needed for the comparison.
         copyReviewStatus();
-        //        cleanUpPathwayFigures();
+        cleanUpPathwayFigures();
         //        // Add this step to remove NegativePrecedingEvent instances that don't have negativePrecedingEvent value
         // These NegativePrecedingEvent instances will also be removed from their referrers.
         cleanUpNegativePrecedingEvents();

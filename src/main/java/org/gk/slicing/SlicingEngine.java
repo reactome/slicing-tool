@@ -715,10 +715,11 @@ public class SlicingEngine {
      * @return
      * @throws Exception
      */
-    private List<GKInstance> copyReviewStatus() throws Exception {
+    // Made protected (instead of private) so that GraphDBSliceToRelTool, whose slice() is built from
+    // the graph database rather than sourceDBA, can also call this.
+    protected List<GKInstance> copyReviewStatus() throws Exception {
         StarSystemHelper helper = new StarSystemHelper();
-        return helper.copyReviewStatusFromPriorSliceForPathways(sourceDBA, 
-                previousSliceDBA,
+        return helper.copyReviewStatusFromPriorSliceForPathways(previousSliceDBA,
                 sliceMap);
     }
     

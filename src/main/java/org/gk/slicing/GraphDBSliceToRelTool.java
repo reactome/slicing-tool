@@ -146,18 +146,18 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         // Need to fill values for Complex.includedLocation
         fillIncludedLocationForComplex();
         fillAttributeValuesForEntitySets();
-        //        List<GKInstance> eventsWithReviewStatusUpdated = fillReviewStatus();
-        //        // There is no need to get anything here
-        //        copyReviewStatus();
+        // fillReviewStatus() is not needed here: it is a relational-era step for assigning FiveStars to
+        // Events that have never had a reviewStatus, which doesn't apply going forward.
+        // copyReviewStatus() restores a higher star from the previous slice when a released pathway's
+        // hasEvent hasn't structurally changed; hasEvent is already fully populated on every Pathway in
+        // sliceMap by this point, so no source database or graph API call is needed for the comparison.
+        copyReviewStatus();
         //        cleanUpPathwayFigures();
         //        // Add this step to remove NegativePrecedingEvent instances that don't have negativePrecedingEvent value
         // These NegativePrecedingEvent instances will also be removed from their referrers.
         cleanUpNegativePrecedingEvents();
         //        // This step has to be called just before dumpInstances() since the replacementInstance
         //        // slot in _Deleted will be checked against the sliceMap.
-        //TODO: This step needs to be published into GraphInstanceManager and make sure all needed instances have been
-        // extracted.
-        //        handleDeletions();
         dumpInstances();
         addFrontPage();
         addReleaseNumber();

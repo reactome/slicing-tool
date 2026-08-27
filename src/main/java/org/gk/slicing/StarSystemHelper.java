@@ -79,23 +79,26 @@ public class StarSystemHelper {
      * the slicing or release, this newly Event is flagged for not releasing. Therefore, the original pathway structure 
      * that is determined by "hasEvent" is reverted back. Therefore, we should copy the original star from the previous release
      * (or slice) back to this slice. In reality, we copy a higher star to any lower star if a pathway's hasEvent is not changed.
-     * (Added on June 9, 2025) To avoid flagging the pathway for the ReviewStatus QA, we also make sure that the list of 
+     * (Added on June 9, 2025) To avoid flagging the pathway for the ReviewStatus QA, we also make sure that the list of
      * structureModified instances are the same as in the old slice database after copying the reviewStatus.
-     * @param sourceDBA
      * @param priorDBA
      * @param sliceMap
      * @return
      * @throws Exception
      */
-    public List<GKInstance> copyReviewStatusFromPriorSliceForPathways(MySQLAdaptor sourceDBA,
-                                                                      MySQLAdaptor priorDBA,
+    public List<GKInstance> copyReviewStatusFromPriorSliceForPathways(MySQLAdaptor priorDBA,
                                                                       Map<Long, GKInstance> sliceMap) throws Exception {
         logger.info("Copying higher stars from previous slice for pathways having no structural update...");
         if (priorDBA == null) {
             logger.info("No priorDBA specified. Stop this step.");
             return Collections.EMPTY_LIST;
         }
-        Map<String, GKInstance> star2inst = loadReviewStatus(sourceDBA);
+        // Use the ReviewStatus CV instances already collected in sliceMap rather than re-querying a source
+        // database for them: sliceMap may have been built from the graph database (GraphDBInstanceManager),
+        // in which case a MySQLAdaptor-based lookup would return different instance objects than the ones
+        // already referenced by pathways in sliceMap. hasEvent is assumed to be fully populated on every
+        // Pathway in sliceMap already, so no source database or API call is needed to compare pathway structure.
+        Map<String, GKInstance> star2inst = loadReviewStatus(sliceMap);
         // Map the review status to numbers so that we can do comparison
         Map<String, Integer> star2number = new HashMap<>();
         star2number.put("OneStar", 1);
@@ -224,6 +227,21 @@ public class StarSystemHelper {
         Collection<GKInstance> instances = dba.fetchInstancesByClass("ReviewStatus");
         for (GKInstance instance : instances) {
             name2instance.put(instance.getDisplayName(), instance);
+        }
+        return name2instance;
+    }
+
+    /**
+     * Same purpose as {@link #loadReviewStatus(MySQLAdaptor)}, but reads the ReviewStatus CV instances
+     * already extracted into sliceMap instead of querying a MySQLAdaptor for them. This is needed for a
+     * graph-database-sourced slice, where the ReviewStatus instances in sliceMap are not tied to any
+     * MySQLAdaptor's instance cache.
+     */
+    private Map<String, GKInstance> loadReviewStatus(Map<Long, GKInstance> sliceMap) {
+        Map<String, GKInstance> name2instance = new HashMap<>();
+        for (GKInstance instance : sliceMap.values()) {
+            if (instance.getSchemClass().isa("ReviewStatus"))
+                name2instance.put(instance.getDisplayName(), instance);
         }
         return name2instance;
     }

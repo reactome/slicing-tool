@@ -185,6 +185,7 @@ public class GraphDBInstanceManager {
                 if (!isPathwayDiagramNeeded(instance))
                     continue;
                 sliceInstanceCache.put(pd.getDbId(), instance);
+                cleanUpRenderedInstanceInPD(instance);
                 extractOneHopReferences(instance);
                 instanceCount++;
             }
@@ -192,6 +193,21 @@ public class GraphDBInstanceManager {
         }
         logger.info("PathwayDiagram extraction completed: " + instanceCount + " instances extracted.");
         logger.info("Total instances in sliceInstanceCache: " + sliceInstanceCache.size());
+    }
+
+    /**
+     * Remove the renderedInstance attribute from a PathwayDiagram instance to
+     * avoid pulling into the sliceMap. The renderedInstance is used to track
+     * the rendered objects in WebBench, not for annotation. This is to avoid
+     * pulling PEs that should not be pulled into the slice database.
+     * @param pdInstance
+     */
+    private void cleanUpRenderedInstanceInPD(SimpleInstance pdInstance) {
+        if (pdInstance == null || pdInstance.getAttributes() == null)
+            return;
+        if (pdInstance.getAttributes().containsKey("renderedInstance")) {
+            pdInstance.getAttributes().remove("renderedInstance");
+        }
     }
 
     private void cleanUpRepresentedPathways(SimpleInstance pdInstance) {

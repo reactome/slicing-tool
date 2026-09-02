@@ -13,10 +13,10 @@ dbName=gk_central_070926_before_migration
 dbPort=3306
 
 # MySQL account name
-dbUser=root
+dbUser={}
 
 # MySQL acount password
-dbPwd=macmysql01
+dbPwd={}
 
 # Name of the file containing a list of topics to be released
 #releaseTopicsFileName=topics.txt
@@ -34,8 +34,8 @@ logFileName=SlicingLog.txt
 
 # If no values are provided, the source database information will be used
 slicingDbHost=localhost
-slicingDbUser=root
-slicingDbPwd=macmysql01
+slicingDbUser={}
+slicingDbPwd={}
 slicingDbPort=3306
 
 # Slicing database name

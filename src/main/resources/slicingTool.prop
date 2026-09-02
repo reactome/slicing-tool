@@ -4,7 +4,10 @@
 dbHost=localhost
 
 # Database name. Usually it should be gk_central.
-dbName=gk_central_06172025
+# This should be the last gk_central before switching to the graph database.
+# The slicing tool needs to get the database schema and diagram XML that has not
+# been modified from this database.
+dbName=gk_central_070926_before_migration
 
 # Port number. Default 3306.
 dbPort=3306
@@ -16,7 +19,8 @@ dbUser=root
 dbPwd=macmysql01
 
 # Name of the file containing a list of topics to be released
-releaseTopicsFileName=topics.txt
+#releaseTopicsFileName=topics.txt
+releaseTopicsFileName=topics_test.txt
 
 # Name of the file containing a list of species that should be in the slice even though some of
 
@@ -35,7 +39,8 @@ slicingDbPwd=macmysql01
 slicingDbPort=3306
 
 # Slicing database name
-slicingDbName=test_graphdb_slice
+#slicingDbName=test_graphdb_slice_07212026
+slicingDbName=test_graphdb_slice_08272026_1
 
 # The following parameters are used for the comparing MySQLAdaptor information.
 # The "previousSlice" database will be used to detect revisions for the Event instances.
@@ -49,7 +54,7 @@ previousSliceDbUser=root
 previousSliceDbPwd=macmysql01
 previousSliceDbPort=3306
 # Compare database name: Use the same gk_central to make the code work
-previousSliceDbName=gk_central_04152024
+previousSliceDbName=gk_central_070926_before_migration
 
 # Check if the slicing is used for a non-human Reactome (e.g. Fly-Reactome). If it is set to true, a single layer of referred Events and their Event-type references will be in the slice.
 useForSpecies=false
@@ -69,15 +74,15 @@ isInDev=true
 
 # Release number that is used to create a _Release instance
 #releaseNumber=2
-releaseNumber=89
+releaseNumber=97
 
 # Release Date, in the format of YYYY-MM-DD, which is used to create a _Release instance
 #releaseDate=2017-08-24
-releaseDate=2024-06-17
+releaseDate=2026-04-02
 
 # Last release Date, in the format of YYYY-MM-DD, which is used to assign releasetStatus for NEW or UPDATED event in homo sapiens.
 #lastReleaseDate=2000-01-01
-lastReleaseDate=2024-03-15
+lastReleaseDate=2026-03-15
 
 # This flag is used to control if the released attribute in StableIdentifier instances should be set to true. If this flag is true, StableIdentifiers in the slice database and their original ones in gk_central will be set to TRUE.
 setReleasedInStableIdentifier=false
@@ -90,3 +95,6 @@ defaultPersonId=140537
 
 # To control if the updated reviewStatus to Events should be written back to the source database. Released Events that don't have reviewStatus are assigned to five stars automatically.
 updateReviewStatusToSource=false
+
+# Use to store cytoscape.js JSON diagram files
+cytoscapeJSJsonFolder=/Users/wug/Documents/web_curator_tool/diagram/cytoscape

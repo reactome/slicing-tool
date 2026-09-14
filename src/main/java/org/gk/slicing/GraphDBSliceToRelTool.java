@@ -219,7 +219,7 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
             // Check if there is any changed diagram in cytoscape folder
             boolean isHandled = false;
             if (cytoscapeFolderName != null) {
-                String fileName = cytoscapeFolderName + "/" + pathway.getDBID() + ".json";
+                String fileName = cytoscapeFolderName + "/" + inst.getDBID() + ".json";
                 java.io.File f = new java.io.File(fileName);
                 if (f.exists()) {
                     try {
@@ -231,6 +231,9 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
                     catch(Exception e) {
                         logger.error("SlicingEngine.extractPathwayDiagrams(): " + e, e);
                     }
+                }
+                else {
+                    logger.info("No cytoscape JSON found for " + inst + " at " + fileName);
                 }
             }
             if (!isHandled) {

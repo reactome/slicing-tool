@@ -83,8 +83,9 @@ public class PathwayDiagramSlicingHelper {
             GKInstance instance = dba.fetchInstance(r.getReactomeId());
             if (instance == null) {
                 logger.warn(r.getReactomeId() + " in " +  diagramInstance.getDisplayName() + " is not in the slice databasae!");
-                // Remove it if it is an Event
-                if (r instanceof ProcessNode || r instanceof HyperEdge) {
+                // Remove it if it is an Event. RenderablePathway is included here too since a Reaction
+                // or BlackBoxEvent can end up rendered as a RenderablePathway node in storedATXML.
+                if (r instanceof ProcessNode || r instanceof RenderablePathway || r instanceof HyperEdge) {
                     processDoNotReleaseEvent(r, 
                                              toBeRemoved,
                                              dba);

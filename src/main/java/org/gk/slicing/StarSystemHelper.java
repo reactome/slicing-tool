@@ -28,6 +28,14 @@ import org.slf4j.LoggerFactory;
 public class StarSystemHelper {
     private final Logger logger = LoggerFactory.getLogger(StarSystemHelper.class);
 
+    private static final String REVIEW_STATUS = "reviewStatus";
+    private static final String STRUCTURE_MODIFIED = "structureModified";
+    private static final String ONE_STAR = "one star";
+    private static final String TWO_STARS = "two stars";
+    private static final String THREE_STARS = "three stars";
+    private static final String FOUR_STARS = "four stars";
+    private static final String FIVE_STARS = "five stars";
+
     public StarSystemHelper() {
     }
 
@@ -53,7 +61,7 @@ public class StarSystemHelper {
                                                     Map<Long, GKInstance> sliceMap) throws Exception {
         logger.info("Assigning five stars to Events to be sliced...");
         Map<String, GKInstance> star2inst = loadReviewStatus(sourceDBA);
-        GKInstance fiveStarReviewStatus = star2inst.get("FiveStars");
+        GKInstance fiveStarReviewStatus = star2inst.get(FIVE_STARS);
         if (fiveStarReviewStatus == null) {
             logger.error("Error: Cannot find five stars ReviewStatus instance.");
             return Collections.EMPTY_LIST;
@@ -61,13 +69,13 @@ public class StarSystemHelper {
         List<GKInstance> updatedEvents = new ArrayList<>();
         for (Long dbId : sliceMap.keySet()) {
             GKInstance inst = sliceMap.get(dbId);
-            if (!inst.getSchemClass().isValidAttribute("ReviewStatus")) {
+            if (!inst.getSchemClass().isValidAttribute(REVIEW_STATUS)) {
                 continue;
             }
-            GKInstance reviewStatus = (GKInstance) inst.getAttributeValue("ReviewStatus");
+            GKInstance reviewStatus = (GKInstance) inst.getAttributeValue(REVIEW_STATUS);
             if (reviewStatus == null) {
                 logger.info("Assigning five stars to: " + inst);
-                inst.setAttributeValue("ReviewStatus", fiveStarReviewStatus);
+                inst.setAttributeValue(REVIEW_STATUS, fiveStarReviewStatus);
                 updatedEvents.add(inst);
             }
         }
@@ -102,22 +110,22 @@ public class StarSystemHelper {
         Map<String, GKInstance> star2inst = loadReviewStatus(sliceMap);
         // Map the review status to numbers so that we can do comparison
         Map<String, Integer> star2number = new HashMap<>();
-        star2number.put("OneStar", 1);
-        star2number.put("TwoStars", 2);
-        star2number.put("ThreeStars", 3);
-        star2number.put("FourStars", 4);
-        star2number.put("FiveStars", 5);
+        star2number.put(ONE_STAR, 1);
+        star2number.put(TWO_STARS, 2);
+        star2number.put(THREE_STARS, 3);
+        star2number.put(FOUR_STARS, 4);
+        star2number.put(FIVE_STARS, 5);
         List<GKInstance> updatedPathways = new ArrayList<>();
         for (Long dbId : sliceMap.keySet()) {
             GKInstance inst = sliceMap.get(dbId);
-            if (!inst.getSchemClass().isValidAttribute("ReviewStatus")) {
+            if (!inst.getSchemClass().isValidAttribute(REVIEW_STATUS)) {
                 continue;
             }
             if (!inst.getSchemClass().isa(ReactomeJavaConstants.Pathway))
                 continue; // Work for pathway only
-            GKInstance reviewStatus = (GKInstance) inst.getAttributeValue("ReviewStatus");
+            GKInstance reviewStatus = (GKInstance) inst.getAttributeValue(REVIEW_STATUS);
             // Escape five stars: They should be good.
-            if (reviewStatus != null && reviewStatus.getDisplayName().equals("FiveStars"))
+            if (reviewStatus != null && FIVE_STARS.equals(reviewStatus.getDisplayName()))
                 continue;
             // Check the old pathway
             GKInstance oldInst = priorDBA.fetchInstance(inst.getDBID());
@@ -125,7 +133,7 @@ public class StarSystemHelper {
                 continue; // Nothing to do
             if (!oldInst.getSchemClass().isa(ReactomeJavaConstants.Pathway))
                 continue; // It is not a pathway. Don't do anything
-            if (!oldInst.getSchemClass().isValidAttribute("ReviewStatus"))
+            if (!oldInst.getSchemClass().isValidAttribute(REVIEW_STATUS))
                 continue; // Old model. Don't bother.
             List<GKInstance> oldHasEvent = oldInst.getAttributeValuesList(ReactomeJavaConstants.hasEvent);
             List<Long> oldHasEventIds = oldHasEvent.stream().map(GKInstance::getDBID).collect(Collectors.toList());
@@ -136,28 +144,30 @@ public class StarSystemHelper {
             if (!oldHasEventIds.equals(newHasEventIds))
                 continue; // The copy is applied to cases that have the same list of hasEvent only.
             // Get the old review status
-            GKInstance oldReviewStatus = (GKInstance) oldInst.getAttributeValue("ReviewStatus");
+            GKInstance oldReviewStatus = (GKInstance) oldInst.getAttributeValue(REVIEW_STATUS);
             if (oldReviewStatus == null)
                 continue; // Nothing to copy
             Integer oldReviewStand = star2number.get(oldReviewStatus.getDisplayName());
-            // Get the stand for the new 
-            Integer newReviewStand = star2number.get(reviewStatus.getDisplayName());
+            if (oldReviewStand == null)
+                continue; // Unknown old review status. Nothing to compare against.
+            // Get the stand for the new
+            Integer newReviewStand = reviewStatus == null ? null : star2number.get(reviewStatus.getDisplayName());
             if (newReviewStand == null)
                 newReviewStand = 0; // Put it at the bottom
             if (newReviewStand < oldReviewStand) {
                 // Copy the old review status to the new. But we need to use the copy of the sourceDBA
                 logger.info("Copying old reviewStatus for " + inst + ": " +
                             oldReviewStatus.getDisplayName() + "->" +
-                            reviewStatus.getDisplayName());
-                inst.setAttributeValue("ReviewStatus",
+                            (reviewStatus == null ? null : reviewStatus.getDisplayName()));
+                inst.setAttributeValue(REVIEW_STATUS,
                                        star2inst.get(oldReviewStatus.getDisplayName()));
                 // Make sure the list of structureModified instances are the same as in the old slice database.
                 // By doing this, we can avoid to flag this pathway for the ReviewStatus QA during the release.
-                List<GKInstance> structureModified = inst.getAttributeValuesList("structureModified");
+                List<GKInstance> structureModified = inst.getAttributeValuesList(STRUCTURE_MODIFIED);
                 if (structureModified != null && structureModified.size() > 0) {
                     // Reset the structureModified list
                     boolean isModified = false;
-                    List<GKInstance> oldStructureModified = oldInst.getAttributeValuesList("structureModified");
+                    List<GKInstance> oldStructureModified = oldInst.getAttributeValuesList(STRUCTURE_MODIFIED);
                     Set<Long> oldStructureModifiedIds = new HashSet<>();
                     if (oldStructureModified != null && oldStructureModified.size() > 0) {
                         oldStructureModifiedIds = oldStructureModified.stream()
@@ -174,7 +184,7 @@ public class StarSystemHelper {
                     }
                     if (isModified) {
                         // Update the structureModified
-                        inst.setAttributeValue("structureModified", structureModified);
+                        inst.setAttributeValue(STRUCTURE_MODIFIED, structureModified);
                     }
                 }
                 updatedPathways.add(inst);
@@ -205,7 +215,7 @@ public class StarSystemHelper {
             int count = 1;
             for (GKInstance event : eventsToBeUpdated) {
                 logger.info(count + ": " + event);
-                sourceDBA.updateInstanceAttribute(event, "ReviewStatus");
+                sourceDBA.updateInstanceAttribute(event, REVIEW_STATUS);
                 event.getAttributeValuesList(ReactomeJavaConstants.modified);
                 event.addAttributeValue(ReactomeJavaConstants.modified, defaultIE);
                 sourceDBA.updateInstanceAttribute(event, ReactomeJavaConstants.modified);

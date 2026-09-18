@@ -454,84 +454,105 @@ public class GraphDBInstanceManager {
         logger.info("Ensuring replacement instances for Deleted instances...");
         // Cache the deleted instance to replacement instances for quick search
         // A deleted instance may have multiple replacement instances, which makes the matter more complicated!
-        Map<Integer, List<Integer>> deletedDBID2ReplacementDBIDs = new HashMap<>(); 
+        Map<Long, List<Long>> deletedDBID2ReplacementDBIDs = new HashMap<>();
         for (SimpleInstance deleted : allDeleted) {
-            List<Integer> deletedInstanceDB_IDList = (List<Integer>) deleted.getAttributes().get("deletedInstanceDbId");
-            if (deletedInstanceDB_IDList == null || deletedInstanceDB_IDList.size() == 0)
+            List<Long> deletedInstanceDB_IDList = getDbIdList(deleted, "deletedInstanceDbId");
+            if (deletedInstanceDB_IDList.isEmpty())
                 continue;
-            List<Integer> replacementInstanceDB_IDList = (List<Integer>) deleted.getAttributes().get("replacementInstanceDBIds");
-            if (replacementInstanceDB_IDList == null) {
-                // An instance may get deleted without replacement. Register it so that there is no need to check the database
-                replacementInstanceDB_IDList = Collections.EMPTY_LIST;
-            }
+            // An instance may get deleted without replacement. getDbIdList() returns an empty list for a
+            // missing attribute, which registers it so that there is no need to check the database.
+            List<Long> replacementInstanceDB_IDList = getDbIdList(deleted, "replacementInstanceDbIds");
             // Each deleted instance shares the same set of replacementInstances
-            for (Integer dbId : deletedInstanceDB_IDList)
+            for (Long dbId : deletedInstanceDB_IDList)
                 deletedDBID2ReplacementDBIDs.put(dbId, replacementInstanceDB_IDList);
         }
         // Make sure replacementInstances are listed. If a replacementInstance is not listed, the code will try to find another
         // one recursively.
         for (SimpleInstance deleted : allDeleted) {
-            // Make sure replacementInstances have what we want to display
-            List<SimpleInstance> replacementInstancesList = (List<SimpleInstance>) deleted.getAttributes().get(ReactomeJavaConstants.replacementInstances);
-            if (replacementInstancesList == null) {
-                replacementInstancesList = new ArrayList<>();
-                deleted.getAttributes().put(ReactomeJavaConstants.replacementInstances, replacementInstancesList);
-            }
+            // Make sure replacementInstances have what we want to display. Work on a modifiable copy:
+            // the list handed back by curator-tool-ws may be immutable.
+            List<SimpleInstance> original = (List<SimpleInstance>) deleted.getAttributes().get(ReactomeJavaConstants.replacementInstances);
+            List<SimpleInstance> replacementInstancesList = (original == null) ? new ArrayList<>() : new ArrayList<>(original);
             // To control the size of the reference graph, we will make sure referred replacementInstances have been loaded already.
             // Remove those not loaded already.
             replacementInstancesList.removeIf(inst -> !sliceInstanceCache.containsKey(inst.getDbId()));
-            
+            // Set it back now so the filtered list, and any addition made below, is visible in the instance
+            deleted.setAttribute(ReactomeJavaConstants.replacementInstances, replacementInstancesList);
+
             // In case a replacementInstance is deleted, we need to find another replacementInstance recursively.
-            List<Integer> replacementInstanceDB_IDList = (List<Integer>) deleted.getAttributes().get("replacementInstanceDbIds");
-            if (replacementInstanceDB_IDList == null || replacementInstanceDB_IDList.size() == 0)
+            List<Long> replacementInstanceDB_IDList = getDbIdList(deleted, "replacementInstanceDbIds");
+            if (replacementInstanceDB_IDList.isEmpty())
                 continue; // Cannot do anything
-            Set<Integer> replacementDB_IDSet = new HashSet<>();
-            for (Integer dbId : replacementInstanceDB_IDList) {
+            Set<Long> replacementDB_IDSet = new HashSet<>();
+            for (Long dbId : replacementInstanceDB_IDList) {
                 ensureReplacementDBID(dbId,
                                       deletedDBID2ReplacementDBIDs,
                                       replacementDB_IDSet);
             }
-            if (replacementDB_IDSet.size() == 0)
+            if (replacementDB_IDSet.isEmpty())
                 continue; // Nothing can be done
             // For quick check
-            Set<Integer> idSet = replacementInstancesList.stream().map(SimpleInstance::getDbId).map(Long::intValue).collect(Collectors.toSet());
-            for (Integer dbId : replacementDB_IDSet) {
+            Set<Long> idSet = replacementInstancesList.stream().map(SimpleInstance::getDbId).collect(Collectors.toSet());
+            boolean dbIdsChanged = false;
+            for (Long dbId : replacementDB_IDSet) {
                 if (idSet.contains(dbId))
                     continue; // Good. It is still there!
                 // Use pull out instances only
-                SimpleInstance inst = sliceInstanceCache.get(dbId.longValue());
+                SimpleInstance inst = sliceInstanceCache.get(dbId);
                 if (inst == null) {
                     logger.warn(deleted + " has a replacement instance set by its dbId. "
                             + "But no instance with this dbId can be found in the slice: " + dbId);
                     continue;
                 }
-                if (!replacementInstanceDB_IDList.contains(dbId))
+                if (!replacementInstanceDB_IDList.contains(dbId)) {
                     replacementInstanceDB_IDList.add(dbId);
+                    dbIdsChanged = true;
+                }
                 replacementInstancesList.add(inst); // Directly push it into the list. It should be placed into the value.
                 logger.info(deleted + " has a replacement instance deleted but replaced with another: " + inst);
             }
+            if (dbIdsChanged) // getDbIdList() returned a copy, so the additions have to be written back
+                deleted.setAttribute("replacementInstanceDbIds", replacementInstanceDB_IDList);
         }
         logger.info("Replacement instance ensuring completed.");
     }
-    
+
+    /**
+     * Attribute values from curator-tool-ws may hold Integer or Long: Neo4j maps integral values to Long,
+     * and generics erasure lets them through a List&lt;Integer&gt; cast (graph-core declares
+     * List&lt;Integer&gt;, but the runtime list can contain Long). Normalize to Long and return a new
+     * modifiable list, empty when the attribute is absent.
+     */
+    private List<Long> getDbIdList(SimpleInstance instance, String attName) {
+        Object value = instance.getAttributes().get(attName);
+        if (!(value instanceof List))
+            return new ArrayList<>(); // Covers null and any unexpected type
+        List<Long> rtn = new ArrayList<>();
+        for (Object obj : (List<?>) value) {
+            if (obj instanceof Number)
+                rtn.add(((Number) obj).longValue());
+        }
+        return rtn;
+    }
+
     /**
      * Make sure the replacementDBIDs are not deleted. Otherwise, try to find their replacement DB_IDs recursively.
      */
-    private void ensureReplacementDBID(Integer dbId,
-                                       Map<Integer, List<Integer>> deletedDBID2ReplacementDBIDs,
-                                       Set<Integer> existedDBIDs) {
-        List<Integer> replacementDBIDs = deletedDBID2ReplacementDBIDs.get(dbId);
+    private void ensureReplacementDBID(Long dbId,
+                                       Map<Long, List<Long>> deletedDBID2ReplacementDBIDs,
+                                       Set<Long> existedDBIDs) {
+        List<Long> replacementDBIDs = deletedDBID2ReplacementDBIDs.get(dbId);
         if (replacementDBIDs == null) {
             existedDBIDs.add(dbId); // This dbId has not been deleted. This is good. Nothing needs to be done.
-            return; 
+            return;
         }
         // replacementDBIDs may be an empty List, which means it is deleted without replacement.
-        for (Integer replacementDBID : replacementDBIDs)
-            ensureReplacementDBID(replacementDBID, 
-                                  deletedDBID2ReplacementDBIDs, 
+        for (Long replacementDBID : replacementDBIDs)
+            ensureReplacementDBID(replacementDBID,
+                                  deletedDBID2ReplacementDBIDs,
                                   existedDBIDs);
     }
-    
+
     private void extractUpdateTracker() {
         logger.info("Starting updateTracker extraction...");
         logger.info("Total instances in sliceInstanceCache: " + this.sliceInstanceCache.size());

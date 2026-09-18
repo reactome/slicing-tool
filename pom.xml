@@ -168,12 +168,6 @@
 			<artifactId>release-common-lib</artifactId>
 			<version>1.2.0</version>
 		</dependency>
-		<dependency>
-			<groupId>junit</groupId>
-			<artifactId>junit</artifactId>
-			<version>4.12</version>
-			<scope>test</scope>
-		</dependency>
 		<!-- The CSV parser. -->
 		<dependency>
 			<groupId>com.opencsv</groupId>
@@ -258,12 +252,11 @@
 			<scope>test</scope>
 		</dependency>
 		
-		<!-- Keep this for the time being since test methods are in the main classes now. -->
-		  <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.13.2</version>
-<!--            <scope>test</scope>-->
-          </dependency>
+		<!-- Compile scope (not test) since test methods are in the main classes now. -->
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>4.13.2</version>
+		</dependency>
 	</dependencies>
 </project>

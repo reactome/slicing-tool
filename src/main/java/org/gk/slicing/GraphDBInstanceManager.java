@@ -671,10 +671,12 @@ public class GraphDBInstanceManager {
                         it.remove();
                     }
                 } else if (value instanceof List) {
-                    List<?> list = (List<?>) value;
-                    list.removeIf(item -> item instanceof SimpleInstance &&
+                    // Just in case the list is not modifiable, create a new list and set it back to the attribute
+                    List<Object> list = new ArrayList<>((List<Object>) value);
+                    if (list.removeIf(item -> item instanceof SimpleInstance &&
                             isEvent((SimpleInstance) item) &&
-                            !sliceInstanceCache.containsKey(((SimpleInstance) item).getDbId())); // Not in the event map so it is not released.
+                            !sliceInstanceCache.containsKey(((SimpleInstance) item).getDbId())))
+                        instance.setAttribute(key, list);
                 }
             }
         }

@@ -149,8 +149,13 @@ public class GraphToRelInstanceConvertManager {
                         else if (attrValue instanceof String)
                             gkInst.setAttributeValue(attrName, attrValue);
                     }
-                    else
+                    else {
+                        SchemaAttribute att = gkInst.getSchemClass().getAttribute(attrName);
+                        // Make sure correct integer type is used for attributes defined as Integer in the schema
+                        if (attrValue instanceof Number && att.getType() == Integer.class)
+                            attrValue = ((Number) attrValue).intValue();
                         gkInst.setAttributeValue(attrName, attrValue);
+                    }
                 }
             }
         }

@@ -1,5 +1,6 @@
 package org.gk.slicing;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -152,8 +153,16 @@ public class GraphToRelInstanceConvertManager {
                     else {
                         SchemaAttribute att = gkInst.getSchemClass().getAttribute(attrName);
                         // Make sure correct integer type is used for attributes defined as Integer in the schema
-                        if (attrValue instanceof Number && att.getType() == Integer.class)
-                            attrValue = ((Number) attrValue).intValue();
+                        if (att.getType() == Integer.class) {
+                            if (attrValue instanceof Number)
+                                attrValue = ((Number) attrValue).intValue();
+                            else if (attrValue instanceof List) { // Multi-valued, e.g. _Deleted.replacementInstanceDB_IDs
+                                List<Object> converted = new ArrayList<>();
+                                for (Object obj : (List<?>) attrValue)
+                                    converted.add(obj instanceof Number ? ((Number) obj).intValue() : obj);
+                                attrValue = converted;
+                            }
+                        }
                         gkInst.setAttributeValue(attrName, attrValue);
                     }
                 }

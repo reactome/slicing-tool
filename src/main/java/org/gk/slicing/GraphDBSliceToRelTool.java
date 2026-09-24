@@ -105,6 +105,7 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         GraphDBInstanceManager graphDBManager = GraphDBInstanceManager.getInstance();
         graphDBManager.setTopLevelIDs(getReleasedProcesses());
         graphDBManager.setSpeciesIds(readSpeciesIDs());
+        graphDBManager.setDefaultPersonId(getDefaultPersonId());
         graphDBManager.extractInstances();
         Map<Long, SimpleInstance> extractedInsts = graphDBManager.getSliceInstances();
         logger.info("Total extracted instances: " + extractedInsts.size());
@@ -298,6 +299,7 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
         }
         // Now set released = true in the source database
         GraphDBInstanceManager manager = GraphDBInstanceManager.getInstance();
+        manager.setDefaultPersonId(getDefaultPersonId());
         manager.setReleasedInStableIdentifiers();
         logger.info("Finished setting released = true for target database.");
     }

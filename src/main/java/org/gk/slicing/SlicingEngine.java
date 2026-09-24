@@ -135,7 +135,11 @@ public class SlicingEngine {
     public void setDefaultPersonId(Long id) {
         this.defaultPersonId = id;
     }
-    
+
+    public Long getDefaultPersonId() {
+        return this.defaultPersonId;
+    }
+
     /**
      * Set the data source for slicing. Usually this should be gk_central.
      * @param dba

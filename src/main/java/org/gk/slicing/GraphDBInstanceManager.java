@@ -55,6 +55,9 @@ public class GraphDBInstanceManager {
     private List<Long> speciesIds;
     // Tracked references pulling
     private Set<Long> refsProcessedIds;
+    // DB_ID of the Person used to create the InstanceEdit when an instance is committed
+    // back to the graph database. The commit API reads it from each SimpleInstance.
+    private Long defaultPersonId;
     // Hooker to the graph database query using the controller in curator-tool-ws.
     private CurationController controller;
     private ConfigurableApplicationContext applicationContext;
@@ -123,6 +126,10 @@ public class GraphDBInstanceManager {
     
     public void setSpeciesIds(List<Long> speciesIds) {
         this.speciesIds = speciesIds;
+    }
+
+    public void setDefaultPersonId(Long defaultPersonId) {
+        this.defaultPersonId = defaultPersonId;
     }
     
     /**
@@ -235,6 +242,9 @@ public class GraphDBInstanceManager {
      */
     protected void setReleasedInStableIdentifiers() {
         logger.info("Setting released=true for all StableIdentifier instances...");
+        if (defaultPersonId == null)
+            throw new IllegalStateException("GraphDBInstanceManager.setReleasedInStableIdentifiers(): " +
+                    "defaultPersonId is not set. It is required to create the InstanceEdit for the commit.");
         for (SimpleInstance instance : sliceInstanceCache.values()) {
             if (!instance.getSchemaClassName().equals(ReactomeJavaConstants.StableIdentifier))
                 continue;
@@ -926,6 +936,7 @@ public class GraphDBInstanceManager {
     }
     
     private SimpleInstance updateInstanceViaAPI(SimpleInstance instance) {
+        instance.setDefaultPersonId(defaultPersonId);
         return this.controller.commit(instance);
     }
 }

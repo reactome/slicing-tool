@@ -185,6 +185,14 @@ public class SlicingEngine {
         this.logFileName = fileName;
     }
 
+    /**
+     * Needed by subclasses that run the QA checks in SlicingQualityAssay, which write their reports
+     * to this file. The field itself stays private.
+     */
+    protected String getLogFileName() {
+        return this.logFileName;
+    }
+
     public void setReleaseNumber(String number) {
         this.releaseNumber = number;
     }
@@ -1346,7 +1354,7 @@ public class SlicingEngine {
         if (error == null || error.length() == 0)
             return true;
         // If the output is Warning, it should be fine
-        if (error.contains(": [Warning]") || error.contains("Warning: ")) { // Something for mysqldump: [Warning] or mysqladmin: [Warning]
+        if (error.contains(": [Warning]") || error.contains("Warning: ") || error.contains("Deprecated")) { // Something for mysqldump: [Warning] or mysqladmin: [Warning]
             logger.warn(error);
             return true;
         }

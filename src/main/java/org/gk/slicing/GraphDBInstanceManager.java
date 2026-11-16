@@ -68,6 +68,23 @@ public class GraphDBInstanceManager {
     // slice database.
     private Set<String> escapedAttributes = Stream.of("inferredTo", "orthologousEvent").collect(Collectors.toSet());
 
+    // Diagnostic only: which attribute pulled which Events into the slice during the reference
+    // closure, so the growth can be attributed instead of guessed at.
+    private final Map<String, Integer> closureAttribution = new TreeMap<>();
+    private final Map<String, List<String>> closureSamples = new LinkedHashMap<>();
+    private static final int SAMPLES_PER_ATTRIBUTE = 3;
+
+    // Attributes that must not be traversed as reference edges during the event closure.
+    // inferredFrom is the INCOMING side of the inferredTo edge (graph-core Event.inferredFrom): on a
+    // non-human event it resolves to the human event it was inferred from. That is the only edge in the
+    // graph data model that crosses species, so admitting its target lets the human hasEvent and
+    // precedingEvent subtrees cascade into a species slice. On the Ver25 rice run this accounted for
+    // ~3,530 of the 3,636 events the closure pulled in, all of them non-Oryza content.
+    // Note: excluding it here also means removeNoReleasedEventsInAttributes() prunes the now-dangling
+    // inferredFrom values from the slice, because their targets are no longer in sliceInstanceCache.
+    // This matches the Ver24 relational slice, which contained no human content at all.
+    private static final Set<String> CLOSURE_EXCLUDED_ATTRIBUTES = Set.of("inferredFrom");
+
     public static void main(String[] args) {
         GraphDBInstanceManager manager = GraphDBInstanceManager.getInstance();
         try {
@@ -645,6 +662,7 @@ public class GraphDBInstanceManager {
         // Need to go through the event reference graph to pull in all events referring by.
         logger.info("Fetching all Events for reference graph closure...");
         extractEventTypeReferences(sliceInstanceCache);
+        logClosureAttribution();
         logger.info("Total instances after figuring out event references: " + sliceInstanceCache.size());
 //        checkSpecies(186860L);
         // Now extract all references for all non-event instances
@@ -681,6 +699,18 @@ public class GraphDBInstanceManager {
                 }
             }
         }
+    }
+
+    private void logClosureAttribution() {
+        int total = closureAttribution.values().stream().mapToInt(Integer::intValue).sum();
+        logger.info("=== Reference closure attribution (total pulled: " + total + ") ===");
+        closureAttribution.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .forEach(e -> {
+                    logger.info("  " + e.getKey() + ": " + e.getValue());
+                    for (String sample : closureSamples.getOrDefault(e.getKey(), Collections.emptyList()))
+                        logger.info("      " + sample);
+                });
     }
 
     private void removeNoReleasedEventsInAttributes() {
@@ -722,6 +752,8 @@ public class GraphDBInstanceManager {
                     continue;
                 Set<String> toBeRemoved = new HashSet<>();
                 for (String attribute : instance.getAttributes().keySet()) {
+                    if (CLOSURE_EXCLUDED_ATTRIBUTES.contains(attribute))
+                        continue; // Never traversed as a reference edge; see CLOSURE_EXCLUDED_ATTRIBUTES
                     Object attValue = instance.getAttributes().get(attribute);
                     if (attValue instanceof SimpleInstance) {
                         SimpleInstance attInstance = (SimpleInstance) attValue;
@@ -732,7 +764,7 @@ public class GraphDBInstanceManager {
                             toBeRemoved.add(attribute);
                             continue; // Skip non-released events
                         }
-                        addEventTypeReference(attInstance, eventMap, next);
+                        addEventTypeReference(attInstance, eventMap, next, attribute, instance);
                     }
                     else if (attValue instanceof List) {
                         List<?> values = (List<?>) attValue;
@@ -747,7 +779,7 @@ public class GraphDBInstanceManager {
                                 it.remove();
                                 continue;
                             }
-                            addEventTypeReference(attInstance, eventMap, next);
+                            addEventTypeReference(attInstance, eventMap, next, attribute, instance);
                         }
                         if (values.isEmpty()) {
                             toBeRemoved.add(attribute);
@@ -763,11 +795,49 @@ public class GraphDBInstanceManager {
         }
     }
 
+    /**
+     * Diagnostic helper: the species of an instance, labelled as "rice" when it is one of the
+     * species listed in Species.txt, so the closure attribution can separate same-species
+     * expansion from cross-species leakage.
+     */
+    private String speciesLabel(SimpleInstance instance) {
+        Long id = primarySpeciesId(instance);
+        if (id == null)
+            return "no-species";
+        if (speciesIds != null && speciesIds.contains(id))
+            return "rice";
+        return "sp:" + id;
+    }
+
+    private Long primarySpeciesId(SimpleInstance instance) {
+        if (instance == null || instance.getAttributes() == null)
+            return null;
+        Object value = instance.getAttributes().get(ReactomeJavaConstants.species);
+        if (value instanceof SimpleInstance)
+            return ((SimpleInstance) value).getDbId();
+        if (value instanceof List && !((List<?>) value).isEmpty()) {
+            Object first = ((List<?>) value).get(0);
+            if (first instanceof SimpleInstance)
+                return ((SimpleInstance) first).getDbId();
+        }
+        return null;
+    }
+
     private void addEventTypeReference(SimpleInstance value,
                                        Map<Long, SimpleInstance> eventMap,
-                                       Set<SimpleInstance> next) {
+                                       Set<SimpleInstance> next,
+                                       String viaAttribute,
+                                       SimpleInstance referrer) {
         if (eventMap.containsKey(value.getDbId()))
             return;
+        String key = viaAttribute + "  [" + speciesLabel(referrer) + " -> " + speciesLabel(value) + "]";
+        closureAttribution.merge(key, 1, Integer::sum);
+        List<String> samples = closureSamples.computeIfAbsent(key, k -> new ArrayList<>());
+        if (samples.size() < SAMPLES_PER_ATTRIBUTE)
+            samples.add(referrer.getSchemaClassName() + ":" + referrer.getDbId() + " ["
+                    + referrer.getDisplayName() + "]  --" + viaAttribute + "-->  "
+                    + value.getSchemaClassName() + ":" + value.getDbId() + " ["
+                    + value.getDisplayName() + "]");
 //        List<SimpleInstance> species = (List<SimpleInstance>) value.getAttributes().get(ReactomeJavaConstants.species);
 //        if (species != null && !species.isEmpty()) {
 //            for (SimpleInstance speciesInstance : species) {

@@ -1,7 +1,9 @@
 package org.gk.slicing;
 
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.util.*;
 
 import org.gk.model.GKInstance;
@@ -123,25 +125,25 @@ public class GraphDBSliceToRelTool extends ProjectBasedSlicingEngine {
 
         extractPathwayDiagrams();
 
-        // The following QA steps are disabled since they are either not needed for GraphDB slicing
-        // or they should be moved by the actual QA checks in other places.
-        //        PrintStream output = null;
-        //        if (logFileName != null)
-        //            output = new PrintStream(new FileOutputStream(logFileName));
-        //        else
-        //            output = System.err;
-        //        SlicingQualityAssay qa = new SlicingQualityAssay();
-        //        qa.setSliceMap(this.sliceMap);
-        //        qa.setSourceDBA(sourceDBA);
-        //        qa.validateExistence(output);
-        //        qa.validateEventsInHierarchy(topLevelIDs,
-        //                                     output);
-        //        qa.validateAttributes(output);
-        //        qa.validateStableIds(output); // Added a new check for StableIds on August 1, 2016
-        //        // Better call this method as the last QA to make sure the attributes have been checked.
-        //        qa.validateUpdateTrackers(output);
-        //        if (logFileName != null)
-        //            output.close(); // Close it if output is opened by the application
+        // QA checks. validateExistence() is deliberately left out: it selects every dbId in sliceMap
+        // out of the DatabaseObject table in the *source* MySQL database (gk_central_261029, the
+        // pre-migration snapshot) and removes from the slice anything it does not find. The slice now
+        // comes from Neo4j, so any instance minted after that snapshot would be silently dropped from
+        // the release. Re-enable only once the two databases are confirmed to be in sync.
+        String qaLogFile = getLogFileName();
+        PrintStream output = qaLogFile == null ? System.err
+                : new PrintStream(new FileOutputStream(qaLogFile), true);
+        SlicingQualityAssay qa = new SlicingQualityAssay();
+        qa.setSliceMap(this.sliceMap);
+        qa.setSourceDBA(sourceDBA);
+        qa.validateEventsInHierarchy(topLevelIDs,
+                                     output);
+        qa.validateAttributes(output);
+        qa.validateStableIds(output); // Added a new check for StableIds on August 1, 2016
+        // Better call this method as the last QA to make sure the attributes have been checked.
+        qa.validateUpdateTrackers(output);
+        if (qaLogFile != null)
+            output.close(); // Close it if output is opened by the application
         addReleaseStatus();
         logger.info("Filling Attribute Values...");
         // Need to fill values for Complex.includedLocation
